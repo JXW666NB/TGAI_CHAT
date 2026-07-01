@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:archive/archive_io.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -56,6 +57,86 @@ class ModelsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('models_list', jsonEncode(_models.map((m) => m.toJson()).toList()));
     await prefs.setString('current_model_id', _current?.id ?? '');
+  }
+
+  Future<ModelInfo?> addTgFile(String tgPath) async {
+    _busy = true;
+    notifyListeners();
+    try {
+      final file = File(tgPath);
+      if (!await file.exists()) throw Exception('文件不存在: $tgPath');
+
+      final bytes = await file.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      // 验证 .TG 格式
+      final manifestEntry = archive.findFile('manifest.json');
+      if (manifestEntry == null) {
+        throw Exception('无效的 .TG 文件：缺少 manifest.json');
+      }
+
+      final manifestStr = utf8.decode(manifestEntry.content as List<int>);
+      final manifest = jsonDecode(manifestStr) as Map<String, dynamic>;
+      final format = manifest['format'] as String?;
+      if (format != 'tgai-mobile-1') {
+        throw Exception('不支持的 .TG 格式版本: $format');
+      }
+
+      final metaName = manifest['name'] as String?;
+      final modelName = metaName ?? p.basenameWithoutExtension(tgPath);
+
+      // 提取文件
+      final docs = await getApplicationDocumentsDirectory();
+      final modelsDir = Directory(p.join(docs.path, 'tg_chat', 'models', modelName));
+      if (await modelsDir.exists()) await modelsDir.delete(recursive: true);
+      await modelsDir.create(recursive: true);
+
+      String? destPrefill;
+      String? destDecode;
+      String? destTokenizer;
+
+      for (final entry in archive) {
+        if (entry.isFile) {
+          final name = entry.name;
+          final outPath = p.join(modelsDir.path, name);
+          final outFile = File(outPath);
+          await outFile.parent.create(recursive: true);
+          await outFile.writeAsBytes(entry.content as List<int>);
+
+          if (name == 'prefill.ptl') {
+            destPrefill = outPath;
+          } else if (name == 'decode.ptl') {
+            destDecode = outPath;
+          } else if (name == 'tokenizer.json') {
+            destTokenizer = outPath;
+          }
+        }
+      }
+
+      if (destPrefill == null) throw Exception('.TG 文件中缺少 prefill.ptl');
+      if (destDecode == null) throw Exception('.TG 文件中缺少 decode.ptl');
+      if (destTokenizer == null) throw Exception('.TG 文件中缺少 tokenizer.json');
+
+      final info = ModelInfo(
+        id: const Uuid().v4(),
+        name: modelName,
+        path: destPrefill,
+        decodePath: destDecode,
+        tokenizerPath: destTokenizer,
+        addedAt: DateTime.now(),
+      );
+      _models.add(info);
+      _current ??= info;
+      await _save();
+      _error = null;
+      return info;
+    } catch (e) {
+      _error = e.toString();
+      return null;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   Future<ModelInfo?> addTgaiModel(String prefillPath) async {

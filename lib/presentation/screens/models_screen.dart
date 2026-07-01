@@ -80,10 +80,16 @@ class ModelsScreen extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.all(16),
-            child: FilledButton.icon(
-              onPressed: models.busy ? null : () => _pickTgai(context, models),
-              icon: const Icon(Icons.add),
-              label: const Text('导入 TGAI 模型'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: models.busy ? null : () => _pickTg(context, models),
+                    icon: const Icon(Icons.package_outlined),
+                    label: const Text('导入 .TG'),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -101,11 +107,25 @@ class ModelsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Text('还没有模型', style: theme.textTheme.headlineSmall?.copyWith(color: theme.colorScheme.outline)),
           const SizedBox(height: 8),
-          Text('请选择 *_prefill.ptl，系统会自动匹配 _decode.ptl 和 tokenizer.json',
+          Text('请导入 .TG 模型文件（一个文件包含全部）',
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
         ],
       ),
     );
+  }
+
+  Future<void> _pickTg(BuildContext context, ModelsProvider models) async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: false);
+    if (result == null || result.files.single.path == null) return;
+
+    final path = result.files.single.path!;
+    if (!path.toLowerCase().endsWith('.tg')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择 .TG 格式的模型文件')));
+      return;
+    }
+
+    final info = await models.addTgFile(path);
+    _showResult(context, models, info);
   }
 
   Future<void> _pickTgai(BuildContext context, ModelsProvider models) async {
