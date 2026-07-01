@@ -85,7 +85,7 @@ class ModelsScreen extends StatelessWidget {
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: models.busy ? null : () => _pickTg(context, models),
-                    icon: const Icon(Icons.package_outlined),
+                    icon: const Icon(Icons.inventory_2_outlined),
                     label: const Text('导入 .TG'),
                   ),
                 ),
