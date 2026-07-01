@@ -35,12 +35,20 @@ class MainActivity : FlutterActivity() {
                         val decode = call.argument<String>("decodePath") ?: ""
                         val tokenizer = call.argument<String>("tokenizerPath") ?: ""
                         val nCtx = call.argument<Int>("nCtx") ?: 512
-                        try {
-                            inference.loadModel(prefill, decode, tokenizer, nCtx)
-                            result.success(mapOf("success" to true, "nCtx" to nCtx))
-                        } catch (e: Exception) {
-                            result.success(mapOf("success" to false, "error" to e.message))
-                        }
+
+                        // 后台线程加载模型，避免主线程阻塞导致 ANR（国产ROM容忍度低）
+                        Thread {
+                            try {
+                                inference.loadModel(prefill, decode, tokenizer, nCtx)
+                                runOnUiThread {
+                                    result.success(mapOf("success" to true, "nCtx" to nCtx))
+                                }
+                            } catch (e: Exception) {
+                                runOnUiThread {
+                                    result.success(mapOf("success" to false, "error" to (e.message ?: "unknown")))
+                                }
+                            }
+                        }.start()
                     }
                     "unloadModel" -> {
                         inference.unloadModel()
@@ -115,11 +123,20 @@ class MainActivity : FlutterActivity() {
                                 val tgFile = File(tgPath)
                                 val totalSize = tgFile.length()
                                 var processed = 0L
+                                var lastReportedProgress = -1.0
 
                                 ZipInputStream(FileInputStream(tgFile)).use { zis ->
                                     var entry: ZipEntry? = zis.nextEntry
                                     while (entry != null && !importCancelFlag) {
                                         val name = entry.name
+
+                                        // 安全防护：防止路径穿越 (../../etc)
+                                        if (name.contains("..")) {
+                                            zis.closeEntry()
+                                            entry = zis.nextEntry
+                                            continue
+                                        }
+
                                         val outFile = File(outDir, name)
                                         outFile.parentFile?.mkdirs()
 
@@ -129,15 +146,22 @@ class MainActivity : FlutterActivity() {
                                             while (zis.read(buffer).also { len = it } != -1 && !importCancelFlag) {
                                                 fos.write(buffer, 0, len)
                                                 processed += len
+
+                                                // 限制进度更新频率：每 1% 才更新一次
                                                 val progress = if (totalSize > 0) (processed.toDouble() / totalSize) else 0.0
-                                                mainHandler.post {
-                                                    importProgressSink?.success(mapOf(
-                                                        "type" to "progress",
-                                                        "progress" to progress,
-                                                        "file" to name,
-                                                        "processed" to processed,
-                                                        "total" to totalSize
-                                                    ))
+                                                if (progress - lastReportedProgress >= 0.01 || progress >= 1.0) {
+                                                    lastReportedProgress = progress
+                                                    val currentName = name
+                                                    val currentProcessed = processed
+                                                    mainHandler.post {
+                                                        importProgressSink?.success(mapOf(
+                                                            "type" to "progress",
+                                                            "progress" to progress,
+                                                            "file" to currentName,
+                                                            "processed" to currentProcessed,
+                                                            "total" to totalSize
+                                                        ))
+                                                    }
                                                 }
                                             }
                                         }

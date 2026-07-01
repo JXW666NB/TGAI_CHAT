@@ -129,12 +129,15 @@ class ModelsScreen extends StatelessWidget {
   }
 
   void _showImportDialog(BuildContext context, ModelsProvider models, String path) {
+    // 先弹出对话框，再异步启动导入
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
+        // ListenableBuilder 监听 ModelsProvider 变化，自动重建 UI
+        return ListenableBuilder(
+          listenable: models,
+          builder: (ctx, _) {
             return AlertDialog(
               title: const Text('导入模型'),
               content: SizedBox(
@@ -164,7 +167,6 @@ class ModelsScreen extends StatelessWidget {
                   TextButton(
                     onPressed: () {
                       models.cancelImport();
-                      Navigator.pop(ctx);
                     },
                     child: const Text('取消'),
                   ),
@@ -172,7 +174,7 @@ class ModelsScreen extends StatelessWidget {
                   TextButton(
                     onPressed: () {
                       Navigator.pop(ctx);
-                      if (models.error == null) {
+                      if (models.error == null && models.importProgress >= 1.0) {
                         ScaffoldMessenger.of(context)
                             .showSnackBar(const SnackBar(content: Text('导入完成')));
                       }
@@ -187,12 +189,8 @@ class ModelsScreen extends StatelessWidget {
     );
 
     // 启动导入（异步，弹窗已显示）
-    models.addTgFile(path).then((info) {
-      if (info != null && context.mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导入: ${info.name}')));
-      }
-    });
+    // 完成后通过 ListenableBuilder 自动更新 UI，用户点击"关闭"按钮手动关闭
+    models.addTgFile(path);
   }
 
   Future<void> _pickTgai(BuildContext context, ModelsProvider models) async {

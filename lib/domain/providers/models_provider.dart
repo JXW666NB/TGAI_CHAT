@@ -105,7 +105,7 @@ class ModelsProvider extends ChangeNotifier {
 
       // 监听原生进度
       progressSub = _progressChannel.receiveBroadcastStream().listen(
-        (event) {
+        (event) async {
           if (event is Map) {
             final type = event['type'] as String?;
             if (type == 'progress') {
@@ -123,11 +123,13 @@ class ModelsProvider extends ChangeNotifier {
                 return;
               }
 
+              // 读取 manifest 获取模型名
               final manifestPath = event['manifest'] as String? ?? '';
               String name = modelName;
               if (manifestPath.isNotEmpty) {
                 try {
-                  final manifestJson = jsonDecode(await File(manifestPath).readAsString()) as Map<String, dynamic>;
+                  final manifestContent = await File(manifestPath).readAsString();
+                  final manifestJson = jsonDecode(manifestContent) as Map<String, dynamic>;
                   final metaName = manifestJson['name'] as String?;
                   if (metaName != null && metaName.isNotEmpty) name = metaName;
                 } catch (_) {}
@@ -164,7 +166,11 @@ class ModelsProvider extends ChangeNotifier {
         'outDir': modelsDir.path,
       });
 
-      final result = await completer.future;
+      // 超时保护：大文件解压最多等 30 分钟
+      final result = await completer.future.timeout(
+        const Duration(minutes: 30),
+        onTimeout: () => throw Exception('解压超时（30分钟）'),
+      );
       _importProgress = 1.0;
       _importStatus = '导入完成';
       _error = null;
