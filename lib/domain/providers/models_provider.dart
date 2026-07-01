@@ -146,7 +146,7 @@ class ModelsProvider extends ChangeNotifier {
 
               _models.add(info);
               _current ??= info;
-              _save();
+              await _save();
               completer.complete(info);
             } else if (type == 'error') {
               completer.completeError(Exception(event['error'] ?? '解压失败'));

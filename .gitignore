@@ -29,3 +29,11 @@ app.*.map.json
 android/.gradle/
 android/key.properties
 android/local.properties
+
+# Large model files (should not be in git)
+tg_mobile_models/
+*.tg
+*.ptl
+export_log.txt
+test_output.txt
+export_model.ps1
