@@ -25,14 +25,20 @@ jobs:
           channel: stable
 
       - name: Download llama.cpp Android binaries
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p llama_cpp
           cd llama_cpp
-          # Use gh CLI (pre-installed on GitHub Actions runners) to download latest release asset
-          gh release download --repo ggerganov/llama.cpp --pattern '*android-arm64-v8a.zip' --dir .
-          unzip -o *.zip
+          # Use curl -L to follow redirects and get the latest release asset URL
+          curl -sL https://api.github.com/repos/ggerganov/llama.cpp/releases/latest > release.json
+          URL=$(python3 -c "import json; d=json.load(open('release.json')); urls=[a['browser_download_url'] for a in d.get('assets',[]) if 'android-arm64-v8a' in a['name']]; print(urls[0] if urls else '')")
+          if [ -z "$URL" ]; then
+            echo "Failed to find llama.cpp Android release asset"
+            cat release.json
+            exit 1
+          fi
+          echo "Downloading: $URL"
+          curl -L -o llama-android.zip "$URL"
+          unzip -o llama-android.zip
           ls -la
 
       - name: Ensure llama.h exists
