@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive_io.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -9,15 +10,28 @@ import 'package:uuid/uuid.dart';
 import '../models/model_info.dart';
 
 class ModelsProvider extends ChangeNotifier {
+  static const _importChannel = MethodChannel('tg_chat/import');
+  static const _progressChannel = EventChannel('tg_chat/import_progress');
+
   final List<ModelInfo> _models = [];
   ModelInfo? _current;
   bool _busy = false;
   String? _error;
 
+  // 导入进度
+  double _importProgress = 0;
+  String _importStatus = '';
+  String _importCurrentFile = '';
+  bool _importing = false;
+
   List<ModelInfo> get models => List.unmodifiable(_models);
   ModelInfo? get current => _current;
   bool get busy => _busy;
   String? get error => _error;
+  double get importProgress => _importProgress;
+  String get importStatus => _importStatus;
+  String get importCurrentFile => _importCurrentFile;
+  bool get importing => _importing;
 
   Future<void> load() async {
     _busy = true;
@@ -60,80 +74,107 @@ class ModelsProvider extends ChangeNotifier {
   }
 
   Future<ModelInfo?> addTgFile(String tgPath) async {
+    _importing = true;
+    _importProgress = 0;
+    _importStatus = '准备解压...';
+    _importCurrentFile = '';
+    _error = null;
     _busy = true;
     notifyListeners();
+
+    StreamSubscription? progressSub;
+    final completer = Completer<ModelInfo?>();
+
     try {
       final file = File(tgPath);
       if (!await file.exists()) throw Exception('文件不存在: $tgPath');
 
-      final bytes = await file.readAsBytes();
-      final archive = ZipDecoder().decodeBytes(bytes);
+      final totalSize = await file.length();
+      _importStatus = '文件大小: ${_formatSize(totalSize)}';
+      notifyListeners();
 
-      // 验证 .TG 格式
-      final manifestEntry = archive.findFile('manifest.json');
-      if (manifestEntry == null) {
-        throw Exception('无效的 .TG 文件：缺少 manifest.json');
-      }
-
-      final manifestStr = utf8.decode(manifestEntry.content as List<int>);
-      final manifest = jsonDecode(manifestStr) as Map<String, dynamic>;
-      final format = manifest['format'] as String?;
-      if (format != 'tgai-mobile-1') {
-        throw Exception('不支持的 .TG 格式版本: $format');
-      }
-
-      final metaName = manifest['name'] as String?;
-      final modelName = metaName ?? p.basenameWithoutExtension(tgPath);
-
-      // 提取文件
+      // 创建输出目录
       final docs = await getApplicationDocumentsDirectory();
+      final modelName = p.basenameWithoutExtension(tgPath);
       final modelsDir = Directory(p.join(docs.path, 'tg_chat', 'models', modelName));
       if (await modelsDir.exists()) await modelsDir.delete(recursive: true);
       await modelsDir.create(recursive: true);
 
-      String? destPrefill;
-      String? destDecode;
-      String? destTokenizer;
+      _importStatus = '正在解压...';
+      notifyListeners();
 
-      for (final entry in archive) {
-        if (entry.isFile) {
-          final name = entry.name;
-          final outPath = p.join(modelsDir.path, name);
-          final outFile = File(outPath);
-          await outFile.parent.create(recursive: true);
-          await outFile.writeAsBytes(entry.content as List<int>);
+      // 监听原生进度
+      progressSub = _progressChannel.receiveBroadcastStream().listen(
+        (event) {
+          if (event is Map) {
+            final type = event['type'] as String?;
+            if (type == 'progress') {
+              _importProgress = (event['progress'] as num?)?.toDouble() ?? 0;
+              _importCurrentFile = event['file'] as String? ?? '';
+              _importStatus = '正在解压: ${_importCurrentFile} (${(_importProgress * 100).toStringAsFixed(0)}%)';
+              notifyListeners();
+            } else if (type == 'done') {
+              final prefillPath = event['prefill'] as String? ?? '';
+              final decodePath = event['decode'] as String? ?? '';
+              final tokenizerPath = event['tokenizer'] as String? ?? '';
 
-          if (name == 'prefill.ptl') {
-            destPrefill = outPath;
-          } else if (name == 'decode.ptl') {
-            destDecode = outPath;
-          } else if (name == 'tokenizer.json') {
-            destTokenizer = outPath;
+              if (prefillPath.isEmpty || decodePath.isEmpty || tokenizerPath.isEmpty) {
+                completer.completeError(Exception('.TG 文件缺少必要组件'));
+                return;
+              }
+
+              final manifestPath = event['manifest'] as String? ?? '';
+              String name = modelName;
+              if (manifestPath.isNotEmpty) {
+                try {
+                  final manifestJson = jsonDecode(await File(manifestPath).readAsString()) as Map<String, dynamic>;
+                  final metaName = manifestJson['name'] as String?;
+                  if (metaName != null && metaName.isNotEmpty) name = metaName;
+                } catch (_) {}
+              }
+
+              final info = ModelInfo(
+                id: const Uuid().v4(),
+                name: name,
+                path: prefillPath,
+                decodePath: decodePath,
+                tokenizerPath: tokenizerPath,
+                addedAt: DateTime.now(),
+              );
+
+              _models.add(info);
+              _current ??= info;
+              _save();
+              completer.complete(info);
+            } else if (type == 'error') {
+              completer.completeError(Exception(event['error'] ?? '解压失败'));
+            } else if (type == 'cancelled') {
+              completer.completeError(Exception('已取消'));
+            }
           }
-        }
-      }
-
-      if (destPrefill == null) throw Exception('.TG 文件中缺少 prefill.ptl');
-      if (destDecode == null) throw Exception('.TG 文件中缺少 decode.ptl');
-      if (destTokenizer == null) throw Exception('.TG 文件中缺少 tokenizer.json');
-
-      final info = ModelInfo(
-        id: const Uuid().v4(),
-        name: modelName,
-        path: destPrefill,
-        decodePath: destDecode,
-        tokenizerPath: destTokenizer,
-        addedAt: DateTime.now(),
+        },
+        onError: (e) {
+          completer.completeError(e);
+        },
       );
-      _models.add(info);
-      _current ??= info;
-      await _save();
+
+      // 调用原生解压
+      await _importChannel.invokeMethod('extractTg', {
+        'tgPath': tgPath,
+        'outDir': modelsDir.path,
+      });
+
+      final result = await completer.future;
+      _importProgress = 1.0;
+      _importStatus = '导入完成';
       _error = null;
-      return info;
+      return result;
     } catch (e) {
       _error = e.toString();
       return null;
     } finally {
+      progressSub?.cancel();
+      _importing = false;
       _busy = false;
       notifyListeners();
     }
@@ -208,5 +249,16 @@ class ModelsProvider extends ChangeNotifier {
     _current = _models.where((m) => m.id == id).firstOrNull;
     _save();
     notifyListeners();
+  }
+
+  Future<void> cancelImport() async {
+    await _importChannel.invokeMethod('cancelImport');
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 }

@@ -124,8 +124,75 @@ class ModelsScreen extends StatelessWidget {
       return;
     }
 
-    final info = await models.addTgFile(path);
-    _showResult(context, models, info);
+    if (!context.mounted) return;
+    _showImportDialog(context, models, path);
+  }
+
+  void _showImportDialog(BuildContext context, ModelsProvider models, String path) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('导入模型'),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    LinearProgressIndicator(value: models.importProgress > 0 ? models.importProgress : null),
+                    const SizedBox(height: 16),
+                    Text(models.importStatus, style: const TextStyle(fontFamily: 'monospace')),
+                    if (models.importCurrentFile.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('文件: ${models.importCurrentFile}',
+                          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline)),
+                    ],
+                    if (models.error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(models.error!,
+                          style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                if (models.importing)
+                  TextButton(
+                    onPressed: () {
+                      models.cancelImport();
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text('取消'),
+                  ),
+                if (!models.importing)
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      if (models.error == null) {
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(const SnackBar(content: Text('导入完成')));
+                      }
+                    },
+                    child: const Text('关闭'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // 启动导入（异步，弹窗已显示）
+    models.addTgFile(path).then((info) {
+      if (info != null && context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导入: ${info.name}')));
+      }
+    });
   }
 
   Future<void> _pickTgai(BuildContext context, ModelsProvider models) async {
