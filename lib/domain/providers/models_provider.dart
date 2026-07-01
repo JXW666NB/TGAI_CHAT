@@ -47,10 +47,8 @@ class ModelsProvider extends ChangeNotifier {
 
   Future<bool> _validateModelFiles(ModelInfo m) async {
     if (!await File(m.path).exists()) return false;
-    if (m.type == ModelType.tgaiPtl) {
-      if (m.decodePath == null || !await File(m.decodePath!).exists()) return false;
-      if (m.tokenizerPath == null || !await File(m.tokenizerPath!).exists()) return false;
-    }
+    if (!await File(m.decodePath).exists()) return false;
+    if (!await File(m.tokenizerPath).exists()) return false;
     return true;
   }
 
@@ -58,35 +56,6 @@ class ModelsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('models_list', jsonEncode(_models.map((m) => m.toJson()).toList()));
     await prefs.setString('current_model_id', _current?.id ?? '');
-  }
-
-  Future<ModelInfo?> addGgufModel(String originalPath) async {
-    _busy = true;
-    notifyListeners();
-    try {
-      final file = File(originalPath);
-      if (!await file.exists()) throw Exception('文件不存在: $originalPath');
-
-      final dest = await _copyToModelsDir(originalPath);
-      final info = ModelInfo(
-        id: const Uuid().v4(),
-        name: p.basename(dest),
-        path: dest,
-        type: ModelType.gguf,
-        addedAt: DateTime.now(),
-      );
-      _models.add(info);
-      _current ??= info;
-      await _save();
-      _error = null;
-      return info;
-    } catch (e) {
-      _error = e.toString();
-      return null;
-    } finally {
-      _busy = false;
-      notifyListeners();
-    }
   }
 
   Future<ModelInfo?> addTgaiModel(String prefillPath) async {
@@ -110,7 +79,6 @@ class ModelsProvider extends ChangeNotifier {
         id: const Uuid().v4(),
         name: '$baseName.ptl',
         path: destPrefill,
-        type: ModelType.tgaiPtl,
         decodePath: destDecode,
         tokenizerPath: destTokenizer,
         addedAt: DateTime.now(),
@@ -144,7 +112,6 @@ class ModelsProvider extends ChangeNotifier {
     if (idx < 0) return;
     final m = _models[idx];
     for (final path in [m.path, m.decodePath, m.tokenizerPath]) {
-      if (path == null) continue;
       try {
         final f = File(path);
         if (await f.exists()) await f.delete();

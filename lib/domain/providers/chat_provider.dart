@@ -4,17 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/config.dart';
 import '../../data/session_store.dart';
-import '../../services/llama_service.dart';
 import '../../services/pytorch_service.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
-import '../models/model_info.dart';
 import 'models_provider.dart';
 import 'settings_provider.dart';
 
 class ChatProvider extends ChangeNotifier {
   final SessionStore _store = SessionStore();
-  final LlamaService _llama = LlamaService();
   final PytorchService _pytorch = PytorchService();
 
   List<ChatSession> _sessions = [];
@@ -24,7 +21,6 @@ class ChatProvider extends ChangeNotifier {
   bool _isLoadingModel = false;
   String? _error;
   StreamSubscription<String>? _genSub;
-  ModelType? _loadedEngineType;
 
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
   ChatSession? get currentSession => _currentSession;
@@ -32,7 +28,7 @@ class ChatProvider extends ChangeNotifier {
   bool get isGenerating => _isGenerating;
   bool get isLoadingModel => _isLoadingModel;
   String? get error => _error;
-  bool get modelLoaded => _llama.isLoaded || _pytorch.isLoaded;
+  bool get modelLoaded => _pytorch.isLoaded;
 
   Future<void> init() async {
     _sessions = await _store.loadSessions();
@@ -89,30 +85,18 @@ class ChatProvider extends ChangeNotifier {
   Future<void> ensureModelLoaded(ModelsProvider models, SettingsProvider settings) async {
     final model = models.current;
     if (model == null) throw Exception('请先在"模型"页选择一个模型');
-
-    // 如果已加载的引擎与当前模型类型不一致，先卸载
-    if (_loadedEngineType != null && _loadedEngineType != model.type) {
-      await unloadModel();
-    }
-    if (model.type == ModelType.gguf && _llama.isLoaded) return;
-    if (model.type == ModelType.tgaiPtl && _pytorch.isLoaded) return;
+    if (_pytorch.isLoaded) return;
 
     _isLoadingModel = true;
     _error = null;
     notifyListeners();
     try {
-      if (model.type == ModelType.gguf) {
-        await _llama.loadModel(model.path, nCtx: settings.contextLength, nThreads: settings.nThreads);
-        _loadedEngineType = ModelType.gguf;
-      } else if (model.type == ModelType.tgaiPtl) {
-        await _pytorch.loadModel(
-          prefillPath: model.path,
-          decodePath: model.decodePath!,
-          tokenizerPath: model.tokenizerPath!,
-          nCtx: settings.contextLength,
-        );
-        _loadedEngineType = ModelType.tgaiPtl;
-      }
+      await _pytorch.loadModel(
+        prefillPath: model.path,
+        decodePath: model.decodePath,
+        tokenizerPath: model.tokenizerPath,
+        nCtx: settings.contextLength,
+      );
       _error = null;
     } catch (e) {
       _error = e.toString();
@@ -155,26 +139,15 @@ class ChatProvider extends ChangeNotifier {
 
     final prompt = _buildPrompt(text.trim(), settings);
 
-    final model = models.current!;
-    final stream = model.type == ModelType.gguf
-        ? _llama.generate(
-            prompt,
-            temperature: settings.temperature,
-            topK: settings.topK,
-            topP: settings.topP,
-            maxTokens: settings.maxTokens,
-            repeatPenalty: settings.repeatPenalty,
-            repeatLastN: settings.repeatLastN,
-          )
-        : _pytorch.generate(
-            prompt,
-            temperature: settings.temperature,
-            topK: settings.topK,
-            topP: settings.topP,
-            maxTokens: settings.maxTokens,
-            repeatPenalty: settings.repeatPenalty,
-            repeatLastN: settings.repeatLastN,
-          );
+    final stream = _pytorch.generate(
+      prompt,
+      temperature: settings.temperature,
+      topK: settings.topK,
+      topP: settings.topP,
+      maxTokens: settings.maxTokens,
+      repeatPenalty: settings.repeatPenalty,
+      repeatLastN: settings.repeatLastN,
+    );
 
     _genSub = stream.listen(
       (piece) {
@@ -273,9 +246,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> unloadModel() async {
-    await _llama.unloadModel();
     await _pytorch.unloadModel();
-    _loadedEngineType = null;
     notifyListeners();
   }
 }

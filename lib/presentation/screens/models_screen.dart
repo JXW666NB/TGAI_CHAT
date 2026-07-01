@@ -34,14 +34,17 @@ class ModelsScreen extends StatelessWidget {
                         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         color: selected ? Theme.of(context).colorScheme.primaryContainer : null,
                         child: ListTile(
-                          leading: _buildTypeIcon(context, m.type),
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            child: Icon(Icons.memory_outlined, color: Theme.of(context).colorScheme.primary),
+                          ),
                           title: Text(m.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(m.path, maxLines: 1, overflow: TextOverflow.ellipsis),
                               Text(
-                                m.type == ModelType.gguf ? 'llama.cpp (GGUF)' : 'PyTorch Mobile (TGAI)',
+                                'PyTorch Mobile (TGAI)',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context).colorScheme.primary,
                                     ),
@@ -77,36 +80,14 @@ class ModelsScreen extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: models.busy ? null : () => _pickGguf(context, models),
-                    icon: const Icon(Icons.add),
-                    label: const Text('GGUF'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: models.busy ? null : () => _pickTgai(context, models),
-                    icon: const Icon(Icons.add),
-                    label: const Text('TGAI'),
-                  ),
-                ),
-              ],
+            child: FilledButton.icon(
+              onPressed: models.busy ? null : () => _pickTgai(context, models),
+              icon: const Icon(Icons.add),
+              label: const Text('导入 TGAI 模型'),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTypeIcon(BuildContext context, ModelType type) {
-    final icon = type == ModelType.gguf ? Icons.smart_toy_outlined : Icons.memory_outlined;
-    return CircleAvatar(
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      child: Icon(icon, color: Theme.of(context).colorScheme.primary),
     );
   }
 
@@ -120,24 +101,11 @@ class ModelsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Text('还没有模型', style: theme.textTheme.headlineSmall?.copyWith(color: theme.colorScheme.outline)),
           const SizedBox(height: 8),
-          Text('支持 GGUF 与 TGAI (.ptl) 两种格式', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
+          Text('请选择 *_prefill.ptl，系统会自动匹配 _decode.ptl 和 tokenizer.json',
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline)),
         ],
       ),
     );
-  }
-
-  Future<void> _pickGguf(BuildContext context, ModelsProvider models) async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any, allowMultiple: false);
-    if (result == null || result.files.single.path == null) return;
-
-    final path = result.files.single.path!;
-    if (!path.toLowerCase().endsWith('.gguf')) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择 .gguf 格式的模型文件')));
-      return;
-    }
-
-    final info = await models.addGgufModel(path);
-    _showResult(context, models, info);
   }
 
   Future<void> _pickTgai(BuildContext context, ModelsProvider models) async {

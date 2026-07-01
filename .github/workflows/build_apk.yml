@@ -24,41 +24,6 @@ jobs:
           flutter-version: '3.22.2'
           channel: stable
 
-      - name: Download llama.cpp Android binaries
-        run: |
-          mkdir -p llama_cpp
-          cd llama_cpp
-          # Use a known release tag that includes Android binaries.
-          # The latest release may not ship Android assets, so pin a stable tag here.
-          RELEASE_TAG="b3503"
-          echo "Using llama.cpp release $RELEASE_TAG"
-          curl -sL "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/$RELEASE_TAG" > release.json
-          echo "Available assets:"
-          python3 -c "import json; d=json.load(open('release.json')); [print(' ', a['name']) for a in d.get('assets',[])]"
-          URL=$(python3 -c "import json; d=json.load(open('release.json')); urls=[a['browser_download_url'] for a in d.get('assets',[]) if 'android-arm64-v8a' in a['name']]; print(urls[0] if urls else '')")
-          if [ -z "$URL" ]; then
-            echo "Failed to find llama.cpp Android release asset"
-            cat release.json
-            exit 1
-          fi
-          echo "Downloading: $URL"
-          curl -L -o llama-android.zip "$URL"
-          unzip -o llama-android.zip
-          ls -la
-
-      - name: Ensure llama.h exists
-        run: |
-          if [ ! -f llama_cpp/llama.h ]; then
-            echo "Downloading llama.h from repo..."
-            curl -L -o llama_cpp/llama.h https://raw.githubusercontent.com/ggerganov/llama.cpp/master/llama.h
-          fi
-
-      - name: Copy libllama.so to jniLibs
-        run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          cp llama_cpp/libllama.so android/app/src/main/jniLibs/arm64-v8a/
-          echo "libllama.so copied."
-
       - name: Get Flutter dependencies
         run: flutter pub get
 

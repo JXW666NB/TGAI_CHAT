@@ -3,7 +3,7 @@
 .SYNOPSIS
     一键配置 TG CHAT 开发/构建环境。
 .DESCRIPTION
-    自动安装 JDK、Flutter、Android SDK、NDK，并下载 llama.cpp Android 预编译库。
+    自动安装 JDK、Flutter、Android SDK、NDK。
     脚本需要管理员权限来修改系统环境变量。
 #>
 $ErrorActionPreference = "Stop"
@@ -11,13 +11,12 @@ $ProgressPreference = "SilentlyContinue"
 
 $User = $env:USERPROFILE
 # 安装到 D 盘，避免 C 盘空间不足
-$ToolsDir = "E:\tgchat_tools"
+$ToolsDir = "D:\tgchat_tools"
 $JdkDir = "$ToolsDir\jdk-17"
 $FlutterDir = "$ToolsDir\flutter"
 $AndroidSdkDir = "$ToolsDir\android-sdk"
 $AndroidCmdlineDir = "$AndroidSdkDir\cmdline-tools\latest"
 $Ndks = @("26.1.10909125")
-$LlamaCppDir = "$ToolsDir\llama_cpp"
 
 function Test-Command {
     param([string]$Cmd)
@@ -106,23 +105,6 @@ foreach ($c in $components) {
     & $sdkmanager --install $c 2>&1 | Out-Null
 }
 Add-ToUserPath -Paths @("$AndroidSdkDir\platform-tools")
-
-# 5. 下载 llama.cpp Android 库和头文件
-Write-Host "=== 下载 llama.cpp Android 二进制 ==="
-New-Item -ItemType Directory -Force -Path $LlamaCppDir | Out-Null
-$release = Invoke-RestMethod -Uri "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest" -UseBasicParsing
-$asset = $release.assets | Where-Object { $_.name -like "*android-arm64-v8a.zip" } | Select-Object -First 1
-if (-not $asset) {
-    throw "未找到 llama.cpp Android arm64 预编译包"
-}
-$llamaZip = "$ToolsDir\$($asset.name)"
-Download-File -Uri $asset.browser_download_url -OutFile $llamaZip
-Expand-Archive -Path $llamaZip -DestinationPath "$ToolsDir\llama_tmp" -Force
-Get-ChildItem "$ToolsDir\llama_tmp" -Recurse -File | ForEach-Object {
-    Move-Item -Path $_.FullName -Destination $LlamaCppDir -Force -ErrorAction SilentlyContinue
-}
-Remove-Item "$ToolsDir\llama_tmp" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "llama.cpp: $LlamaCppDir"
 
 Write-Host ""
 Write-Host "=============================="
