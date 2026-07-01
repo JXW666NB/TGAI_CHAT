@@ -88,7 +88,7 @@ class TgaiInference(private val context: Context) {
         val generated = mutableListOf<Int>()
         promptIds.forEach { generated.add(it.toInt()) }
 
-        var nextToken = sample(lastLogits, temperature, topK, topP, generated, repeatPenalty)
+        var nextToken = sample(lastLogits, temperature, topK, topP, generated, repeatPenalty, repeatLastN)
         generated.add(nextToken)
 
         var decoded = tok.decode(generated, skipSpecial = true)
@@ -108,7 +108,7 @@ class TgaiInference(private val context: Context) {
             val decodeOut = decode.forward(IValue.from(inputTensor), IValue.from(cachePosTensor), IValue.from(kvCache))
             val decodeLogits = decodeOut.toTensor().dataAsFloatArray
 
-            nextToken = sample(decodeLogits, temperature, topK, topP, generated, repeatPenalty)
+            nextToken = sample(decodeLogits, temperature, topK, topP, generated, repeatPenalty, repeatLastN)
             generated.add(nextToken)
             cachePos++
 
@@ -129,7 +129,8 @@ class TgaiInference(private val context: Context) {
         topK: Int,
         topP: Float,
         generated: List<Int>,
-        repeatPenalty: Float
+        repeatPenalty: Float,
+        repeatLastN: Int
     ): Int {
         val vocab = logits.size
         val invTemp = 1.0f / max(temperature, 0.01f)
