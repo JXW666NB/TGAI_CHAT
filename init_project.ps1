@@ -77,6 +77,7 @@ try {
     $customFiles = @(
         "android\build.gradle",
         "android\settings.gradle",
+        "android\gradle.properties",
         "android\app\build.gradle",
         "android\app\src\main\AndroidManifest.xml",
         "android\app\src\main\res\values\styles.xml",
