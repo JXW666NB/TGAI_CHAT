@@ -21,8 +21,8 @@ if (flutterVersionName == null) {
 
 android {
     namespace "com.example.tg_chat"
-    compileSdkVersion 34
-    ndkVersion flutter.ndkVersion
+    compileSdk 34
+    ndkVersion "26.1.10909125"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -31,13 +31,12 @@ android {
 
     defaultConfig {
         applicationId "com.example.tg_chat"
-        minSdkVersion 24
-        targetSdkVersion 34
+        minSdk 24
+        targetSdk 34
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
 
         ndk {
-            // llama.cpp 仅提供 arm64-v8a 预编译库；PyTorch Mobile 也按此 ABI 打包，避免 APK 膨胀
             abiFilters 'arm64-v8a'
         }
     }
@@ -49,8 +48,6 @@ android {
             shrinkResources false
         }
     }
-
-    ndkVersion "26.1.10909125"
 }
 
 flutter {
