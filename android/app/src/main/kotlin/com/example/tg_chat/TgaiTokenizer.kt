@@ -15,6 +15,7 @@ class TgaiTokenizer(context: Context, tokenizerPath: String) {
     val unkId: Int
     val bosId: Int
     val eosId: Int
+    val vocabSize: Int get() = vocab.size
 
     init {
         val json = JSONObject(File(tokenizerPath).readText())

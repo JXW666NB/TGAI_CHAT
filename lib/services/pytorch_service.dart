@@ -59,6 +59,34 @@ class PytorchService {
     if (!_isLoaded) throw Exception('model not loaded');
 
     final eventChannel = EventChannel('tg_chat/generate');
+
+    // 先创建 StreamController 并建立 EventChannel 监听，再调用 startGenerate
+    // 避免原生线程在 Dart 监听就绪前发送事件导致崩溃
+    final controller = StreamController<String>();
+
+    late StreamSubscription<dynamic> sub;
+    sub = eventChannel.receiveBroadcastStream().listen(
+      (event) {
+        if (event is Map) {
+          if (event['type'] == 'token') {
+            controller.add(event['text'] as String);
+          } else if (event['type'] == 'error') {
+            controller.addError(Exception(event['error']));
+          } else if (event['type'] == 'done') {
+            controller.close();
+          }
+        }
+      },
+      onError: (e) {
+        controller.addError(e);
+      },
+      onDone: () {
+        controller.close();
+      },
+      cancelOnError: true,
+    );
+
+    // 监听建立后再启动推理
     _channel.invokeMethod('startGenerate', {
       'prompt': prompt,
       'temperature': temperature,
@@ -69,17 +97,11 @@ class PytorchService {
       'repeatLastN': repeatLastN,
     });
 
-    return eventChannel.receiveBroadcastStream().map((event) {
-      if (event is Map) {
-        if (event['type'] == 'token') {
-          return event['text'] as String;
-        } else if (event['type'] == 'error') {
-          throw Exception(event['error']);
-        } else if (event['type'] == 'done') {
-          // stream 自然结束
-        }
-      }
-      return '';
-    }).where((s) => s.isNotEmpty);
+    controller.onCancel = () {
+      sub.cancel();
+      _channel.invokeMethod('stopGenerate');
+    };
+
+    return controller.stream;
   }
 }

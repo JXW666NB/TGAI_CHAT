@@ -11,14 +11,14 @@ import kotlin.math.min
 
 class TgaiInference(private val context: Context) {
 
+    @Volatile
     private var prefillModule: Module? = null
+    @Volatile
     private var decodeModule: Module? = null
+    @Volatile
     private var tokenizer: TgaiTokenizer? = null
 
     private var nCtx: Int = 512
-    private var nLayers: Int = 0
-    private var nHeads: Int = 0
-    private var dK: Int = 0
     private var vocabSize: Int = 0
 
     @Volatile
@@ -29,17 +29,7 @@ class TgaiInference(private val context: Context) {
         prefillModule = Module.load(prefillPath)
         decodeModule = Module.load(decodePath)
         tokenizer = TgaiTokenizer(context, tokenizerPath)
-
-        // 从 prefill 输出形状推断维度
-        val probeInput = Tensor.fromBlob(longArrayOf(tokenizer!!.bosId.toLong()), longArrayOf(1, 1))
-        val output = prefillModule!!.forward(IValue.from(probeInput)).toTuple()
-        val logitsShape = output[0].toTensor().shape()
-        val kvShape = output[1].toTensor().shape()
-
-        vocabSize = logitsShape[2].toInt()
-        nLayers = (kvShape[0].toInt()) / 2
-        nHeads = kvShape[2].toInt()
-        dK = kvShape[4].toInt()
+        vocabSize = tokenizer!!.vocabSize
     }
 
     fun unloadModel() {
