@@ -105,7 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 IconButton(
                   icon: const Icon(Icons.tune),
-                  onPressed: () => Scaffold.of(context).openEndDrawer(),
+                  onPressed: () => _showParams(context),
                   tooltip: '参数',
                 ),
                 IconButton(
@@ -117,20 +117,6 @@ class _ChatScreenState extends State<ChatScreen> {
             )
           : null,
       drawer: widget.showAppBar ? Drawer(child: _buildSessionsDrawer(context, chat)) : null,
-      endDrawer: widget.showAppBar
-          ? Drawer(
-              child: SafeArea(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      const ParameterPanel(),
-                      if (settings.debugMode) DebugPanel(settings: settings, chat: chat),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          : null,
       body: body,
     );
   }
@@ -211,6 +197,33 @@ class _ChatScreenState extends State<ChatScreen> {
             child: const Text('清空'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showParams(BuildContext context) {
+    final settings = context.read<SettingsProvider>();
+    final chat = context.read<ChatProvider>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ParameterPanel(),
+              if (settings.debugMode)
+                ChangeNotifierProvider.value(value: settings, child: DebugPanel(settings: settings, chat: chat)),
+            ],
+          ),
+        ),
       ),
     );
   }
