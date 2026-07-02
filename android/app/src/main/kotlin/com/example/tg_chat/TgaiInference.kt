@@ -68,7 +68,7 @@ class TgaiInference(private val context: Context) {
 
             // 每次 forward 喂入当前所有 token
             val inputIds = generated.toIntArray()
-            val inputTensor = Tensor.fromBlob(inputIds, intArrayOf(1, inputIds.size))
+            val inputTensor: Tensor = Tensor.fromBlob(inputIds, longArrayOf(1, inputIds.size.toLong()))
 
             val output = mod.forward(EValue.from(inputTensor))
             val logitsData = output[0].toTensor().dataAsFloatArray
