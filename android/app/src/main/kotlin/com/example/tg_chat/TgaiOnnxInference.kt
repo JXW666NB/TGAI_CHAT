@@ -6,7 +6,6 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import java.nio.IntBuffer
-import java.nio.FloatBuffer
 import java.util.*
 
 class TgaiOnnxInference {
@@ -82,7 +81,7 @@ class TgaiOnnxInference {
             val inputBuffer = IntBuffer.wrap(inputIds)
 
             val inputTensor = OnnxTensor.createTensor(
-                ortEnv, inputBuffer, inputShape, OnnxJavaType.INT32
+                ortEnv, ortEnv.allocator, inputBuffer, inputShape
             )
 
             // 推理
