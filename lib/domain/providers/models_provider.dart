@@ -117,7 +117,7 @@ class ModelsProvider extends ChangeNotifier {
               final tokenizerPath = event['tokenizer'] as String? ?? '';
 
               if (modelPath.isEmpty || tokenizerPath.isEmpty) {
-                completer.completeError(Exception('.TG 文件缺少必要组件（需要 tgai.pte + tokenizer.json）'));
+                completer.completeError(Exception('.TG 文件缺少必要组件（需要模型文件 + tokenizer.json）'));
                 return;
               }
 

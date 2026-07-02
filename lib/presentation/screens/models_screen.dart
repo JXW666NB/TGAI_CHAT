@@ -43,7 +43,7 @@ class ModelsScreen extends StatelessWidget {
                             children: [
                               Text(m.path, maxLines: 1, overflow: TextOverflow.ellipsis),
                               Text(
-                                'ExecuTorch (TGAI)',
+                                'ONNX Runtime (TGAI)',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context).colorScheme.primary,
                                     ),

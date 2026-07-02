@@ -1,7 +1,7 @@
 class ModelInfo {
   final String id;
   final String name;
-  final String path; // tgai.pte 路径
+  final String path; // 模型路径 (.onnx 或 .pte)
   final String tokenizerPath; // tokenizer.json 路径
   final int? contextLength;
   final DateTime addedAt;

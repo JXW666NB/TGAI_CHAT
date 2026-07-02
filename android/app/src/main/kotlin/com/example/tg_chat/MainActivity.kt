@@ -19,14 +19,14 @@ class MainActivity : FlutterActivity() {
     private val importChannel = "tg_chat/import"
     private val importProgressChannel = "tg_chat/import_progress"
 
-    private lateinit var inference: TgaiInference
+    private lateinit var inference: TgaiOnnxInference
     private var generateSink: EventChannel.EventSink? = null
     private var importProgressSink: EventChannel.EventSink? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        inference = TgaiInference(context)
+        inference = TgaiOnnxInference()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, inferenceChannel)
             .setMethodCallHandler { call, result ->
@@ -39,7 +39,7 @@ class MainActivity : FlutterActivity() {
                         // 后台线程加载模型，避免主线程阻塞导致 ANR（国产ROM容忍度低）
                         Thread {
                             try {
-                                inference.loadModel(modelPath, tokenizerPath, nCtx)
+                                inference.loadModel(context, modelPath, tokenizerPath, nCtx)
                                 runOnUiThread {
                                     result.success(mapOf("success" to true, "nCtx" to nCtx))
                                 }
@@ -168,7 +168,7 @@ class MainActivity : FlutterActivity() {
                                         }
 
                                         when (name) {
-                                            "tgai.pte" -> outcomes["model"] = outFile.absolutePath
+                                            "tgai.onnx" -> outcomes["model"] = outFile.absolutePath
                                             "tokenizer.json" -> outcomes["tokenizer"] = outFile.absolutePath
                                             "manifest.json" -> outcomes["manifest"] = outFile.absolutePath
                                         }
