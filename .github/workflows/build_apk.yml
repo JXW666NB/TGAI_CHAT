@@ -24,6 +24,18 @@ jobs:
           flutter-version: '3.22.2'
           channel: stable
 
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/tlstudio.keystore
+            echo "storeFile=app/tlstudio.keystore" > android/key.properties
+            echo "keyAlias=tgchat" >> android/key.properties
+            echo "keyPassword=tlstudio2026" >> android/key.properties
+            echo "storePassword=tlstudio2026" >> android/key.properties
+          fi
+
       - name: Get Flutter dependencies
         run: flutter pub get
 

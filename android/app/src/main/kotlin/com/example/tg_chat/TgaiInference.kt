@@ -53,13 +53,13 @@ class TgaiInference(private val context: Context) {
 
         stopRequested = false
 
-        val promptIds = tok.encode(prompt, addSpecial = true).take(nCtx).map { it.toLong() }
+        val promptIds = tok.encode(prompt, addSpecial = true).take(nCtx).map { it }
         if (promptIds.isEmpty()) throw IllegalArgumentException("prompt 为空")
 
-        val generated = mutableListOf<Long>()
+        val generated = mutableListOf<Int>()
         generated.addAll(promptIds)
 
-        var decoded = tok.decode(generated.map { it.toInt() }, skipSpecial = true)
+        var decoded = tok.decode(generated, skipSpecial = true)
 
         for (step in 0 until maxTokens) {
             if (stopRequested) break
@@ -67,8 +67,8 @@ class TgaiInference(private val context: Context) {
             if (generated.size >= nCtx) break
 
             // 每次 forward 喂入当前所有 token
-            val inputIds = generated.toLongArray()
-            val inputTensor = Tensor.fromBlob(inputIds, longArrayOf(1, inputIds.size.toLong()))
+            val inputIds = generated.toIntArray()
+            val inputTensor = Tensor.fromBlob(inputIds, intArrayOf(1, inputIds.size))
 
             val output = mod.forward(EValue.from(inputTensor))
             val logitsData = output[0].toTensor().dataAsFloatArray
@@ -79,13 +79,13 @@ class TgaiInference(private val context: Context) {
 
             val nextToken = sample(
                 lastLogits, temperature, topK, topP,
-                generated.map { it.toInt() }, repeatPenalty, repeatLastN
+                generated, repeatPenalty, repeatLastN
             )
 
             if (nextToken == tok.eosId) break
-            generated.add(nextToken.toLong())
+            generated.add(nextToken)
 
-            val newDecoded = tok.decode(generated.map { it.toInt() }, skipSpecial = true)
+            val newDecoded = tok.decode(generated, skipSpecial = true)
             val piece = newDecoded.substring(decoded.length)
             decoded = newDecoded
             if (piece.isNotEmpty()) onToken(piece)
