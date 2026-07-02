@@ -10,15 +10,13 @@ class PytorchService {
   int nCtx = 0;
 
   Future<void> loadModel({
-    required String prefillPath,
-    required String decodePath,
+    required String modelPath,
     required String tokenizerPath,
     required int nCtx,
   }) async {
     await unloadModel();
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('loadModel', {
-      'prefillPath': prefillPath,
-      'decodePath': decodePath,
+      'modelPath': modelPath,
       'tokenizerPath': tokenizerPath,
       'nCtx': nCtx,
     });

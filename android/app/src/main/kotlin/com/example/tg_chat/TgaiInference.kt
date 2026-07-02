@@ -1,10 +1,9 @@
 package com.example.tg_chat
 
 import android.content.Context
-import org.pytorch.IValue
-import org.pytorch.Module
-import org.pytorch.Tensor
-import java.io.File
+import org.pytorch.executorch.EValue
+import org.pytorch.executorch.Module
+import org.pytorch.executorch.Tensor
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -12,9 +11,7 @@ import kotlin.math.min
 class TgaiInference(private val context: Context) {
 
     @Volatile
-    private var prefillModule: Module? = null
-    @Volatile
-    private var decodeModule: Module? = null
+    private var module: Module? = null
     @Volatile
     private var tokenizer: TgaiTokenizer? = null
 
@@ -24,17 +21,15 @@ class TgaiInference(private val context: Context) {
     @Volatile
     private var stopRequested: Boolean = false
 
-    fun loadModel(prefillPath: String, decodePath: String, tokenizerPath: String, nCtx: Int) {
+    fun loadModel(modelPath: String, tokenizerPath: String, nCtx: Int) {
         this.nCtx = nCtx
-        prefillModule = Module.load(prefillPath)
-        decodeModule = Module.load(decodePath)
+        module = Module.load(modelPath)
         tokenizer = TgaiTokenizer(context, tokenizerPath)
         vocabSize = tokenizer!!.vocabSize
     }
 
     fun unloadModel() {
-        prefillModule = null
-        decodeModule = null
+        module = null
         tokenizer = null
         stopRequested = true
     }
@@ -54,55 +49,43 @@ class TgaiInference(private val context: Context) {
         onToken: (String) -> Unit
     ) {
         val tok = tokenizer ?: throw IllegalStateException("模型未加载")
-        val prefill = prefillModule ?: throw IllegalStateException("模型未加载")
-        val decode = decodeModule ?: throw IllegalStateException("模型未加载")
+        val mod = module ?: throw IllegalStateException("模型未加载")
 
         stopRequested = false
 
-        val promptIds = tok.encode(prompt, addSpecial = true).take(nCtx).map { it.toLong() }.toLongArray()
+        val promptIds = tok.encode(prompt, addSpecial = true).take(nCtx).map { it.toLong() }
         if (promptIds.isEmpty()) throw IllegalArgumentException("prompt 为空")
 
-        // Prefill
-        val prefillInput = Tensor.fromBlob(promptIds, longArrayOf(1, promptIds.size.toLong()))
-        val prefillOut = prefill.forward(IValue.from(prefillInput)).toTuple()
-        val prefillLogits = prefillOut[0].toTensor()
-        val kvCache = prefillOut[1].toTensor()
+        val generated = mutableListOf<Long>()
+        generated.addAll(promptIds)
 
-        val logitsData = prefillLogits.dataAsFloatArray
-        val vocab = vocabSize
-        val seqLen = promptIds.size
-
-        // 取最后一个 token 的 logits
-        val lastLogits = FloatArray(vocab) { logitsData[(seqLen - 1) * vocab + it] }
-
-        val generated = mutableListOf<Int>()
-        promptIds.forEach { generated.add(it.toInt()) }
-
-        var nextToken = sample(lastLogits, temperature, topK, topP, generated, repeatPenalty, repeatLastN)
-        generated.add(nextToken)
-
-        var decoded = tok.decode(generated, skipSpecial = true)
-        if (decoded.isNotEmpty()) onToken(decoded)
-
-        var cachePos = seqLen
+        var decoded = tok.decode(generated.map { it.toInt() }, skipSpecial = true)
 
         for (step in 0 until maxTokens) {
             if (stopRequested) break
+
+            if (generated.size >= nCtx) break
+
+            // 每次 forward 喂入当前所有 token
+            val inputIds = generated.toLongArray()
+            val inputTensor = Tensor.fromBlob(inputIds, longArrayOf(1, inputIds.size.toLong()))
+
+            val output = mod.forward(EValue.from(inputTensor))
+            val logitsData = output[0].toTensor().dataAsFloatArray
+            val seqLen = inputIds.size
+
+            // 取最后一个位置的 logits
+            val lastLogits = FloatArray(vocabSize) { logitsData[(seqLen - 1) * vocabSize + it] }
+
+            val nextToken = sample(
+                lastLogits, temperature, topK, topP,
+                generated.map { it.toInt() }, repeatPenalty, repeatLastN
+            )
+
             if (nextToken == tok.eosId) break
-            if (cachePos >= nCtx) break
+            generated.add(nextToken.toLong())
 
-            val inputIds = longArrayOf(nextToken.toLong())
-            val inputTensor = Tensor.fromBlob(inputIds, longArrayOf(1, 1))
-            val cachePosTensor = Tensor.fromBlob(longArrayOf(cachePos.toLong()), longArrayOf(1))
-
-            val decodeOut = decode.forward(IValue.from(inputTensor), IValue.from(cachePosTensor), IValue.from(kvCache))
-            val decodeLogits = decodeOut.toTensor().dataAsFloatArray
-
-            nextToken = sample(decodeLogits, temperature, topK, topP, generated, repeatPenalty, repeatLastN)
-            generated.add(nextToken)
-            cachePos++
-
-            val newDecoded = tok.decode(generated, skipSpecial = true)
+            val newDecoded = tok.decode(generated.map { it.toInt() }, skipSpecial = true)
             val piece = newDecoded.substring(decoded.length)
             decoded = newDecoded
             if (piece.isNotEmpty()) onToken(piece)
@@ -126,7 +109,6 @@ class TgaiInference(private val context: Context) {
         val invTemp = 1.0f / max(temperature, 0.01f)
         val scores = FloatArray(vocab) { logits[it] * invTemp }
 
-        // 重复惩罚（仅惩罚最近 repeatLastN 个 token）
         if (repeatPenalty > 1.0f) {
             val recent = generated.takeLast(repeatLastN).toSet()
             for (id in recent) {
@@ -134,7 +116,6 @@ class TgaiInference(private val context: Context) {
             }
         }
 
-        // Top-K
         if (topK > 0) {
             val k = min(topK, vocab)
             val sorted = scores.sortedDescending()
@@ -144,7 +125,6 @@ class TgaiInference(private val context: Context) {
             }
         }
 
-        // Top-P
         if (topP < 1.0f) {
             val indexed = scores.mapIndexed { idx, value -> idx to value }.sortedByDescending { it.second }
             val expVals = indexed.map { exp((it.second - (scores.maxOrNull() ?: 0f)).toDouble()).toFloat() }
@@ -162,18 +142,15 @@ class TgaiInference(private val context: Context) {
             }
         }
 
-        // Softmax
         val maxScore = scores.maxOrNull() ?: 0f
         val expScores = scores.map { exp((it - maxScore).toDouble()).toFloat() }
         val sumExp = expScores.sum()
         val probs = expScores.map { it / sumExp }
 
-        // 防止全 -inf
         if (probs.any { it.isNaN() || it < 0 }) {
             return generated.lastOrNull() ?: 0
         }
 
-        // Multinomial
         val rand = java.util.Random().nextFloat()
         var cum = 0.0f
         for (i in probs.indices) {

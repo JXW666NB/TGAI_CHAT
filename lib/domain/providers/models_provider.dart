@@ -62,7 +62,6 @@ class ModelsProvider extends ChangeNotifier {
 
   Future<bool> _validateModelFiles(ModelInfo m) async {
     if (!await File(m.path).exists()) return false;
-    if (!await File(m.decodePath).exists()) return false;
     if (!await File(m.tokenizerPath).exists()) return false;
     return true;
   }
@@ -114,12 +113,11 @@ class ModelsProvider extends ChangeNotifier {
               _importStatus = '正在解压: ${_importCurrentFile} (${(_importProgress * 100).toStringAsFixed(0)}%)';
               notifyListeners();
             } else if (type == 'done') {
-              final prefillPath = event['prefill'] as String? ?? '';
-              final decodePath = event['decode'] as String? ?? '';
+              final modelPath = event['model'] as String? ?? '';
               final tokenizerPath = event['tokenizer'] as String? ?? '';
 
-              if (prefillPath.isEmpty || decodePath.isEmpty || tokenizerPath.isEmpty) {
-                completer.completeError(Exception('.TG 文件缺少必要组件'));
+              if (modelPath.isEmpty || tokenizerPath.isEmpty) {
+                completer.completeError(Exception('.TG 文件缺少必要组件（需要 tgai.pte + tokenizer.json）'));
                 return;
               }
 
@@ -138,8 +136,7 @@ class ModelsProvider extends ChangeNotifier {
               final info = ModelInfo(
                 id: const Uuid().v4(),
                 name: name,
-                path: prefillPath,
-                decodePath: decodePath,
+                path: modelPath,
                 tokenizerPath: tokenizerPath,
                 addedAt: DateTime.now(),
               );
@@ -186,60 +183,11 @@ class ModelsProvider extends ChangeNotifier {
     }
   }
 
-  Future<ModelInfo?> addTgaiModel(String prefillPath) async {
-    _busy = true;
-    notifyListeners();
-    try {
-      final dir = p.dirname(prefillPath);
-      final baseName = p.basenameWithoutExtension(prefillPath).replaceAll('_prefill', '');
-      final decodePath = p.join(dir, '${baseName}_decode.ptl');
-      final tokenizerPath = p.join(dir, 'tokenizer.json');
-
-      if (!await File(prefillPath).exists()) throw Exception('prefill 文件不存在');
-      if (!await File(decodePath).exists()) throw Exception('同目录下未找到 ${baseName}_decode.ptl');
-      if (!await File(tokenizerPath).exists()) throw Exception('同目录下未找到 tokenizer.json');
-
-      final destPrefill = await _copyToModelsDir(prefillPath);
-      final destDecode = await _copyToModelsDir(decodePath);
-      final destTokenizer = await _copyToModelsDir(tokenizerPath);
-
-      final info = ModelInfo(
-        id: const Uuid().v4(),
-        name: '$baseName.ptl',
-        path: destPrefill,
-        decodePath: destDecode,
-        tokenizerPath: destTokenizer,
-        addedAt: DateTime.now(),
-      );
-      _models.add(info);
-      _current ??= info;
-      await _save();
-      _error = null;
-      return info;
-    } catch (e) {
-      _error = e.toString();
-      return null;
-    } finally {
-      _busy = false;
-      notifyListeners();
-    }
-  }
-
-  Future<String> _copyToModelsDir(String originalPath) async {
-    final docs = await getApplicationDocumentsDirectory();
-    final modelsDir = Directory(p.join(docs.path, 'tg_chat', 'models'));
-    await modelsDir.create(recursive: true);
-    final name = p.basename(originalPath);
-    final dest = p.join(modelsDir.path, name);
-    await File(originalPath).copy(dest);
-    return dest;
-  }
-
   Future<void> removeModel(String id) async {
     final idx = _models.indexWhere((m) => m.id == id);
     if (idx < 0) return;
     final m = _models[idx];
-    for (final path in [m.path, m.decodePath, m.tokenizerPath]) {
+    for (final path in [m.path, m.tokenizerPath]) {
       try {
         final f = File(path);
         if (await f.exists()) await f.delete();

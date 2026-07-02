@@ -34,6 +34,7 @@ android/local.properties
 tg_mobile_models/
 *.tg
 *.ptl
+*.pte
 export_log.txt
 test_output.txt
 export_model.ps1

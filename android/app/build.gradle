@@ -57,5 +57,5 @@ flutter {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'org.pytorch:pytorch_android_lite:2.1.0'
+    implementation 'org.pytorch:executorch-android:1.0.0'
 }

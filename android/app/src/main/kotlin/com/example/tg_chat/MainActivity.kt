@@ -32,15 +32,14 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "loadModel" -> {
-                        val prefill = call.argument<String>("prefillPath") ?: ""
-                        val decode = call.argument<String>("decodePath") ?: ""
-                        val tokenizer = call.argument<String>("tokenizerPath") ?: ""
+                        val modelPath = call.argument<String>("modelPath") ?: ""
+                        val tokenizerPath = call.argument<String>("tokenizerPath") ?: ""
                         val nCtx = call.argument<Int>("nCtx") ?: 512
 
                         // 后台线程加载模型，避免主线程阻塞导致 ANR（国产ROM容忍度低）
                         Thread {
                             try {
-                                inference.loadModel(prefill, decode, tokenizer, nCtx)
+                                inference.loadModel(modelPath, tokenizerPath, nCtx)
                                 runOnUiThread {
                                     result.success(mapOf("success" to true, "nCtx" to nCtx))
                                 }
@@ -169,8 +168,7 @@ class MainActivity : FlutterActivity() {
                                         }
 
                                         when (name) {
-                                            "prefill.ptl" -> outcomes["prefill"] = outFile.absolutePath
-                                            "decode.ptl" -> outcomes["decode"] = outFile.absolutePath
+                                            "tgai.pte" -> outcomes["model"] = outFile.absolutePath
                                             "tokenizer.json" -> outcomes["tokenizer"] = outFile.absolutePath
                                             "manifest.json" -> outcomes["manifest"] = outFile.absolutePath
                                         }
@@ -190,8 +188,7 @@ class MainActivity : FlutterActivity() {
                                 mainHandler.post {
                                     importProgressSink?.success(mapOf(
                                         "type" to "done",
-                                        "prefill" to (outcomes["prefill"] ?: ""),
-                                        "decode" to (outcomes["decode"] ?: ""),
+                                        "model" to (outcomes["model"] ?: ""),
                                         "tokenizer" to (outcomes["tokenizer"] ?: ""),
                                         "manifest" to (outcomes["manifest"] ?: ""),
                                     ))

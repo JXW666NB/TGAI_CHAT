@@ -92,8 +92,7 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
     try {
       await _pytorch.loadModel(
-        prefillPath: model.path,
-        decodePath: model.decodePath,
+        modelPath: model.path,
         tokenizerPath: model.tokenizerPath,
         nCtx: settings.contextLength,
       );
