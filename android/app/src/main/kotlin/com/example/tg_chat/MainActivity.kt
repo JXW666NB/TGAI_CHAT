@@ -9,6 +9,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.nio.channels.FileChannel
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
@@ -122,10 +123,12 @@ class MainActivity : FlutterActivity() {
                                 val outcomes = mutableMapOf<String, String>()
                                 val tgFile = File(tgPath)
                                 val totalSize = tgFile.length()
-                                var processed = 0L
                                 var lastReportedProgress = -1.0
 
-                                ZipInputStream(FileInputStream(tgFile)).use { zis ->
+                                // 使用 FileChannel 跟踪原始压缩流位置，避免解压后字节数超过 100%
+                                val fis = FileInputStream(tgFile)
+                                val channel = fis.channel
+                                ZipInputStream(fis).use { zis ->
                                     var entry: ZipEntry? = zis.nextEntry
                                     while (entry != null && !importCancelFlag) {
                                         val name = entry.name
@@ -145,20 +148,19 @@ class MainActivity : FlutterActivity() {
                                             var len: Int
                                             while (zis.read(buffer).also { len = it } != -1 && !importCancelFlag) {
                                                 fos.write(buffer, 0, len)
-                                                processed += len
 
-                                                // 限制进度更新频率：每 1% 才更新一次
-                                                val progress = if (totalSize > 0) (processed.toDouble() / totalSize) else 0.0
+                                                // 用原始压缩流位置计算进度（不会超过 100%）
+                                                val rawPos = channel.position()
+                                                val progress = if (totalSize > 0) (rawPos.toDouble() / totalSize) else 0.0
                                                 if (progress - lastReportedProgress >= 0.01 || progress >= 1.0) {
                                                     lastReportedProgress = progress
                                                     val currentName = name
-                                                    val currentProcessed = processed
                                                     mainHandler.post {
                                                         importProgressSink?.success(mapOf(
                                                             "type" to "progress",
                                                             "progress" to progress,
                                                             "file" to currentName,
-                                                            "processed" to currentProcessed,
+                                                            "processed" to rawPos,
                                                             "total" to totalSize
                                                         ))
                                                     }
