@@ -5,7 +5,8 @@ import ai.onnxruntime.*
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
-import java.nio.IntBuffer
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.*
 
 class TgaiOnnxInference {
@@ -75,13 +76,16 @@ class TgaiOnnxInference {
             if (stopRequested) break
             if (generated.size >= nCtx) break
 
-            // 准备输入: IntArray → OnnxTensor(int32)
+            // 准备输入: IntArray → ByteBuffer(int32) → OnnxTensor
             val inputIds = generated.toIntArray()
             val inputShape = longArrayOf(1, inputIds.size.toLong())
-            val inputBuffer = IntBuffer.wrap(inputIds)
+
+            val byteBuffer = ByteBuffer.allocateDirect(inputIds.size * 4)
+                .order(ByteOrder.nativeOrder())
+            byteBuffer.asIntBuffer().put(inputIds)
 
             val inputTensor = OnnxTensor.createTensor(
-                ortEnv, ortEnv.allocator, inputBuffer, inputShape
+                ortEnv, byteBuffer, inputShape, OnnxJavaType.INT32
             )
 
             // 推理
