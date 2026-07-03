@@ -14,4 +14,5 @@ class AppConfig {
   static const int defaultPrefillWindow = 64;
   static const int defaultDecodeWindow = 16;
   static const int defaultNThreads = 4;
+  static const bool defaultUseACL = true;
 }

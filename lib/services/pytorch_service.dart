@@ -13,12 +13,14 @@ class PytorchService {
     required String modelPath,
     required String tokenizerPath,
     required int nCtx,
+    required bool useACL,
   }) async {
     await unloadModel();
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('loadModel', {
       'modelPath': modelPath,
       'tokenizerPath': tokenizerPath,
       'nCtx': nCtx,
+      'useACL': useACL,
     });
     if (result == null || result['success'] != true) {
       throw Exception(result?['error'] ?? '加载模型失败');

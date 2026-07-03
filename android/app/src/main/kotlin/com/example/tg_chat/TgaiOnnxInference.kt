@@ -21,22 +21,22 @@ class TgaiOnnxInference {
     @Volatile
     private var stopRequested: Boolean = false
 
-    fun loadModel(context: Context, modelPath: String, tokenizerPath: String, nCtx: Int) {
+    fun loadModel(context: Context, modelPath: String, tokenizerPath: String, nCtx: Int, useACL: Boolean = true) {
         this.nCtx = nCtx
         tokenizer = TgaiTokenizer(context, tokenizerPath)
         vocabSize = tokenizer!!.vocabSize
 
         env = OrtEnvironment.getEnvironment()
         val opts = OrtSession.SessionOptions().apply {
-            // XNNPACK 加速（CPU EP 内置），不额外注册 NNAPI 避免频繁回退
+            // ACL（ARM Compute Library）优先，回退 XNNPACK CPU
+            if (useACL) {
+                try { addACL(true) } catch (_: Exception) {}
+            }
             try { addCPU(true) } catch (_: Exception) {}
-            // 匹配物理核心数
             val numCores = Runtime.getRuntime().availableProcessors()
             try { setIntraOpNumThreads(numCores) } catch (_: Exception) {}
             try { setInterOpNumThreads(1) } catch (_: Exception) {}
-            // 禁用 intra-op spinning 避免与 XNNPACK 内部线程池抢资源
             try { addConfigEntry("session.intra_op.allow_spinning", "0") } catch (_: Exception) {}
-            // 启用图优化 + 内存复用
             try { setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT) } catch (_: Exception) {}
             try { setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL) } catch (_: Exception) {}
         }

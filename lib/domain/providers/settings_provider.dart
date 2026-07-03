@@ -99,6 +99,12 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get useACL => _prefs.getBool('useACL') ?? AppConfig.defaultUseACL;
+  set useACL(bool v) {
+    _prefs.setBool('useACL', v);
+    notifyListeners();
+  }
+
   bool get debugMode => _prefs.getBool('debugMode') ?? false;
   set debugMode(bool v) {
     _prefs.setBool('debugMode', v);
@@ -137,6 +143,7 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.remove('nThreads');
     await _prefs.remove('prefillWindow');
     await _prefs.remove('decodeWindow');
+    await _prefs.remove('useACL');
     notifyListeners();
   }
 }

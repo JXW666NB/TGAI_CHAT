@@ -127,6 +127,16 @@ class ParameterPanel extends StatelessWidget {
               divisions: 7,
               onChanged: (v) => settings.nThreads = v.round(),
             ),
+
+            const SizedBox(height: 12),
+            _sectionHeader(context, '加速后端'),
+            _buildToggle(
+              context,
+              label: 'ARM Compute Library',
+              hint: '启用 ARM 官方 CPU 加速库（NEON 汇编优化）。部分手机可能不兼容，关闭则回退 XNNPACK',
+              value: settings.useACL,
+              onChanged: (v) => settings.useACL = v,
+            ),
           ],
         ),
       ),
@@ -142,6 +152,42 @@ class ParameterPanel extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+
+  Widget _buildToggle(
+    BuildContext context, {
+    required String label,
+    required String hint,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+              ),
+              Switch(
+                value: value,
+                onChanged: onChanged,
+              ),
+            ],
+          ),
+          Text(
+            hint,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.grey,
+              fontSize: 11,
+            ),
+          ),
+        ],
       ),
     );
   }

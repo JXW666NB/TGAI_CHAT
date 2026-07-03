@@ -20,6 +20,10 @@ class ChatProvider extends ChangeNotifier {
   bool _isGenerating = false;
   bool _isLoadingModel = false;
   String? _error;
+
+  // 跟踪上次加载时的设置，变化时自动重载
+  int? _lastContextLength;
+  bool? _lastUseACL;
   StreamSubscription<String>? _genSub;
 
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
@@ -85,7 +89,16 @@ class ChatProvider extends ChangeNotifier {
   Future<void> ensureModelLoaded(ModelsProvider models, SettingsProvider settings) async {
     final model = models.current;
     if (model == null) throw Exception('请先在"模型"页选择一个模型');
-    if (_pytorch.isLoaded) return;
+
+    // 如果加载时设置变化了，自动卸载重载
+    if (_pytorch.isLoaded) {
+      if (_lastContextLength != settings.contextLength ||
+          _lastUseACL != settings.useACL) {
+        await _pytorch.unloadModel();
+      } else {
+        return;
+      }
+    }
 
     _isLoadingModel = true;
     _error = null;
@@ -95,8 +108,11 @@ class ChatProvider extends ChangeNotifier {
         modelPath: model.path,
         tokenizerPath: model.tokenizerPath,
         nCtx: settings.contextLength,
+        useACL: settings.useACL,
       );
       _error = null;
+      _lastContextLength = settings.contextLength;
+      _lastUseACL = settings.useACL;
     } catch (e) {
       _error = e.toString();
       rethrow;
