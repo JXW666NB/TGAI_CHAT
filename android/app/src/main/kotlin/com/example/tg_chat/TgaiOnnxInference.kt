@@ -29,7 +29,7 @@ class TgaiOnnxInference {
         env = OrtEnvironment.getEnvironment()
         val opts = OrtSession.SessionOptions().apply {
             // 优先尝试 GPU/NPU，回退 CPU
-            try { addNnapi("nnapi") } catch (_: Exception) {}
+             try { addNnapi() } catch (_: Exception) {}
             try { addCPU(true) } catch (_: Exception) {}
             // 多线程加速
             try { setIntraOpNumThreads(4) } catch (_: Exception) {}
