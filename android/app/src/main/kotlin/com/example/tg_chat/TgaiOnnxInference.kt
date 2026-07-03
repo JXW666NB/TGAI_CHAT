@@ -17,7 +17,8 @@ class TgaiOnnxInference {
 
     private var nCtx: Int = 512
     private var vocabSize: Int = 0
-    private val windowSize: Int = 64  // 滑动窗口，O(n) 变 O(1)
+    private val windowSize: Int = 64  // 首步预填充窗口
+    private val decodeWindow: Int = 4  // 后续解码窗口（极快）
 
     @Volatile
     private var stopRequested: Boolean = false
@@ -86,10 +87,13 @@ class TgaiOnnxInference {
             if (stopRequested) break
             if (generated.size >= nCtx) break
 
-            // 滑动窗口：每步只喂最近 windowSize 个 token，O(1) 而非 O(n²)
+            // 预填充 + 微上下文解码：
+            //   首步：喂 64 token prompt → 建初步上下文
+            //   后续：只喂最后 4 token → 极快但质量略降
             val fullIds = generated.toIntArray()
-            val windowIds = if (fullIds.size > windowSize) {
-                fullIds.copyOfRange(fullIds.size - windowSize, fullIds.size)
+            val ctxSize = if (step == 0) windowSize else decodeWindow
+            val windowIds = if (fullIds.size > ctxSize) {
+                fullIds.copyOfRange(fullIds.size - ctxSize, fullIds.size)
             } else {
                 fullIds
             }
