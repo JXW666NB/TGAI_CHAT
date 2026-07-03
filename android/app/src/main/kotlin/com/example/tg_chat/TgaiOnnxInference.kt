@@ -17,6 +17,7 @@ class TgaiOnnxInference {
 
     private var nCtx: Int = 512
     private var vocabSize: Int = 0
+    private val windowSize: Int = 64  // 滑动窗口，O(n) 变 O(1)
 
     @Volatile
     private var stopRequested: Boolean = false
@@ -81,13 +82,18 @@ class TgaiOnnxInference {
             if (stopRequested) break
             if (generated.size >= nCtx) break
 
-            // 准备输入: IntArray → ByteBuffer(int32) → OnnxTensor
-            val inputIds = generated.toIntArray()
-            val inputShape = longArrayOf(1, inputIds.size.toLong())
+            // 滑动窗口：每步只喂最近 windowSize 个 token，O(1) 而非 O(n²)
+            val fullIds = generated.toIntArray()
+            val windowIds = if (fullIds.size > windowSize) {
+                fullIds.copyOfRange(fullIds.size - windowSize, fullIds.size)
+            } else {
+                fullIds
+            }
+            val inputShape = longArrayOf(1, windowIds.size.toLong())
 
-            val byteBuffer = ByteBuffer.allocateDirect(inputIds.size * 4)
+            val byteBuffer = ByteBuffer.allocateDirect(windowIds.size * 4)
                 .order(ByteOrder.nativeOrder())
-            byteBuffer.asIntBuffer().put(inputIds)
+            byteBuffer.asIntBuffer().put(windowIds)
 
             val inputTensor = OnnxTensor.createTensor(
                 ortEnv, byteBuffer, inputShape, OnnxJavaType.INT32
@@ -101,7 +107,7 @@ class TgaiOnnxInference {
             // 读取 logits: output[1, seq_len, vocab_size]
             val outputTensor = outputs.get(0) as OnnxTensor
             val logitsData = outputTensor.floatBuffer
-            val seqLen = inputIds.size
+            val seqLen = windowIds.size
 
             // 取最后一个位置的 logits
             val offset = (seqLen - 1) * vocabSize
