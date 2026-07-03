@@ -29,13 +29,17 @@ class TgaiOnnxInference {
 
         env = OrtEnvironment.getEnvironment()
         val opts = OrtSession.SessionOptions().apply {
-            // 优先尝试 GPU/NPU，回退 CPU
-             try { addNnapi() } catch (_: Exception) {}
+            // XNNPACK 加速（CPU EP 内置），不额外注册 NNAPI 避免频繁回退
             try { addCPU(true) } catch (_: Exception) {}
-            // 多线程加速
-            try { setIntraOpNumThreads(4) } catch (_: Exception) {}
-            // 启用图优化
+            // 匹配物理核心数
+            val numCores = Runtime.getRuntime().availableProcessors()
+            try { setIntraOpNumThreads(numCores) } catch (_: Exception) {}
+            try { setInterOpNumThreads(1) } catch (_: Exception) {}
+            // 禁用 intra-op spinning 避免与 XNNPACK 内部线程池抢资源
+            try { addConfigEntry("session.intra_op.allow_spinning", "0") } catch (_: Exception) {}
+            // 启用图优化 + 内存复用
             try { setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT) } catch (_: Exception) {}
+            try { setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL) } catch (_: Exception) {}
         }
 
         session = env!!.createSession(modelPath, opts)
