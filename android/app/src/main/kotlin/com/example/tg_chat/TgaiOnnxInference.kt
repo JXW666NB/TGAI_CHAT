@@ -33,9 +33,7 @@ class TgaiOnnxInference {
             } catch (_: Exception) {}
         }
 
-        // ONNX Runtime Android 直接用文件路径可能因权限/路径编码失败，改用 bytes
-        val modelBytes = java.io.File(modelPath).readBytes()
-        session = env!!.createSession(modelBytes, opts)
+        session = env!!.createSession(modelPath, opts)
     }
 
     fun unloadModel() {

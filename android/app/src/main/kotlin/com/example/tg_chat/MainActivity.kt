@@ -169,6 +169,7 @@ class MainActivity : FlutterActivity() {
 
                                         when (name) {
                                             "tgai.onnx" -> outcomes["model"] = outFile.absolutePath
+                                            "tgai.onnx.data" -> outcomes["model_data"] = outFile.absolutePath
                                             "tokenizer.json" -> outcomes["tokenizer"] = outFile.absolutePath
                                             "manifest.json" -> outcomes["manifest"] = outFile.absolutePath
                                         }
