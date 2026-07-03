@@ -18,7 +18,7 @@ class TgaiOnnxInference {
     private var nCtx: Int = 512
     private var vocabSize: Int = 0
     private val windowSize: Int = 64  // 首步预填充窗口
-    private val decodeWindow: Int = 4  // 后续解码窗口（极快）
+    private val decodeWindow: Int = 16  // 解码窗口：4=烂 64=慢 16=平衡
 
     @Volatile
     private var stopRequested: Boolean = false
