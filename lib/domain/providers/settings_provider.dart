@@ -81,9 +81,21 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  int get nThreads => _prefs.getInt('nThreads') ?? 4;
+  int get nThreads => _prefs.getInt('nThreads') ?? AppConfig.defaultNThreads;
   set nThreads(int v) {
     _prefs.setInt('nThreads', v);
+    notifyListeners();
+  }
+
+  int get prefillWindow => _prefs.getInt('prefillWindow') ?? AppConfig.defaultPrefillWindow;
+  set prefillWindow(int v) {
+    _prefs.setInt('prefillWindow', v);
+    notifyListeners();
+  }
+
+  int get decodeWindow => _prefs.getInt('decodeWindow') ?? AppConfig.defaultDecodeWindow;
+  set decodeWindow(int v) {
+    _prefs.setInt('decodeWindow', v);
     notifyListeners();
   }
 
@@ -123,6 +135,8 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.remove('userPrefix');
     await _prefs.remove('assistantPrefix');
     await _prefs.remove('nThreads');
+    await _prefs.remove('prefillWindow');
+    await _prefs.remove('decodeWindow');
     notifyListeners();
   }
 }

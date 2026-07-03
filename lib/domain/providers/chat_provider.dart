@@ -146,6 +146,8 @@ class ChatProvider extends ChangeNotifier {
       maxTokens: settings.maxTokens,
       repeatPenalty: settings.repeatPenalty,
       repeatLastN: settings.repeatLastN,
+      prefillWindow: settings.prefillWindow,
+      decodeWindow: settings.decodeWindow,
     );
 
     _genSub = stream.listen(

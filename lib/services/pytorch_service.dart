@@ -53,6 +53,8 @@ class PytorchService {
     int maxTokens = 256,
     double repeatPenalty = 1.1,
     int repeatLastN = 64,
+    int prefillWindow = 64,
+    int decodeWindow = 16,
   }) {
     if (!_isLoaded) throw Exception('model not loaded');
 
@@ -93,6 +95,8 @@ class PytorchService {
       'maxTokens': maxTokens,
       'repeatPenalty': repeatPenalty,
       'repeatLastN': repeatLastN,
+      'prefillWindow': prefillWindow,
+      'decodeWindow': decodeWindow,
     });
 
     controller.onCancel = () {

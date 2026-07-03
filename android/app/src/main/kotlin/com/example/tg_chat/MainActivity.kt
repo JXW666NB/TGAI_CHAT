@@ -75,6 +75,8 @@ class MainActivity : FlutterActivity() {
                         val maxTokens = call.argument<Int>("maxTokens") ?: 256
                         val repeatPenalty = call.argument<Double>("repeatPenalty")?.toFloat() ?: 1.1f
                         val repeatLastN = call.argument<Int>("repeatLastN") ?: 64
+                        val prefillWindow = call.argument<Int>("prefillWindow") ?: 64
+                        val decodeWindow = call.argument<Int>("decodeWindow") ?: 16
 
                         Thread {
                             try {
@@ -86,6 +88,8 @@ class MainActivity : FlutterActivity() {
                                     maxTokens = maxTokens,
                                     repeatPenalty = repeatPenalty,
                                     repeatLastN = repeatLastN,
+                                    prefillWindow = prefillWindow,
+                                    decodeWindow = decodeWindow,
                                     onToken = { token ->
                                         runOnUiThread {
                                             generateSink?.success(mapOf("type" to "token", "text" to token))

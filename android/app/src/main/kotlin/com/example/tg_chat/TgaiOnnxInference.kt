@@ -17,8 +17,6 @@ class TgaiOnnxInference {
 
     private var nCtx: Int = 512
     private var vocabSize: Int = 0
-    private val windowSize: Int = 64  // 首步预填充窗口
-    private val decodeWindow: Int = 16  // 解码窗口：4=烂 64=慢 16=平衡
 
     @Volatile
     private var stopRequested: Boolean = false
@@ -67,6 +65,8 @@ class TgaiOnnxInference {
         maxTokens: Int = 256,
         repeatPenalty: Float = 1.1f,
         repeatLastN: Int = 64,
+        prefillWindow: Int = 64,
+        decodeWindow: Int = 16,
         onToken: (String) -> Unit
     ) {
         val tok = tokenizer ?: throw IllegalStateException("模型未加载")
@@ -87,11 +87,11 @@ class TgaiOnnxInference {
             if (stopRequested) break
             if (generated.size >= nCtx) break
 
-            // 预填充 + 微上下文解码：
-            //   首步：喂 64 token prompt → 建初步上下文
-            //   后续：只喂最后 4 token → 极快但质量略降
+            // 预填充 + 窗口解码：
+            //   首步：喂 prefillWindow token → 建上下文
+            //   后续：只喂最近 decodeWindow token → 速度优先/质量优先取决于窗口大小
             val fullIds = generated.toIntArray()
-            val ctxSize = if (step == 0) windowSize else decodeWindow
+            val ctxSize = if (step == 0) prefillWindow else decodeWindow
             val windowIds = if (fullIds.size > ctxSize) {
                 fullIds.copyOfRange(fullIds.size - ctxSize, fullIds.size)
             } else {
