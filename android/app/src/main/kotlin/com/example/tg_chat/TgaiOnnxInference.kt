@@ -180,15 +180,12 @@ class TgaiOnnxInference {
      */
     private fun tryAddNnapi(opts: OrtSession.SessionOptions): Boolean {
         return try {
-            // ONNX Runtime 1.18+ 的 NNAPI API
-            opts.addNnapi(mapOf(
-                "nnapi.use_fp16" to "1",
-                "nnapi.use_nchw" to "0",
-            ))
+            // ONNX Runtime NNAPI（useArena=true 可减少内存分配）
+            opts.addNnapi(true)
             true
         } catch (e: Exception) {
             try {
-                // 旧版 API（无参数）
+                // 无参回退
                 opts.addNnapi()
                 true
             } catch (_: Exception) {
