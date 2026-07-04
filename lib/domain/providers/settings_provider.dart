@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/config.dart';
+import '../../services/pytorch_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   late SharedPreferences _prefs;
@@ -9,10 +10,31 @@ class SettingsProvider extends ChangeNotifier {
 
   bool get initialized => _initialized;
 
+  // 设备信息（从原生获取）
+  Map<String, dynamic> _deviceInfo = {};
+  Map<String, dynamic> get deviceInfo => _deviceInfo;
+  bool _deviceInfoLoaded = false;
+  bool get deviceInfoLoaded => _deviceInfoLoaded;
+
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
     _initialized = true;
     notifyListeners();
+    // 后台获取设备信息，不阻塞启动
+    fetchDeviceInfo();
+  }
+
+  Future<void> fetchDeviceInfo() async {
+    try {
+      final info = await PytorchService().getDeviceInfo();
+      if (info != null) {
+        _deviceInfo = info;
+        _deviceInfoLoaded = true;
+        notifyListeners();
+      }
+    } catch (_) {
+      // 设备信息获取失败不影响使用
+    }
   }
 
   double get temperature => _prefs.getDouble('temperature') ?? AppConfig.defaultTemperature;
@@ -105,6 +127,12 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  String get providerMode => _prefs.getString('providerMode') ?? AppConfig.defaultProviderMode;
+  set providerMode(String v) {
+    _prefs.setString('providerMode', v);
+    notifyListeners();
+  }
+
   bool get debugMode => _prefs.getBool('debugMode') ?? false;
   set debugMode(bool v) {
     _prefs.setBool('debugMode', v);
@@ -144,6 +172,7 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.remove('prefillWindow');
     await _prefs.remove('decodeWindow');
     await _prefs.remove('useACL');
+    await _prefs.remove('providerMode');
     notifyListeners();
   }
 }

@@ -29,6 +29,12 @@ class ParameterPanel extends StatelessWidget {
             ),
             const Divider(height: 24),
 
+            // === 设备信息 ===
+            if (settings.deviceInfoLoaded) ...[
+              _buildDeviceInfo(context, settings),
+              const Divider(height: 24),
+            ],
+
             // === 基础参数 ===
             _sectionHeader(context, '基础参数'),
             _buildSlider(
@@ -120,26 +126,138 @@ class ParameterPanel extends StatelessWidget {
             _buildSlider(
               context,
               label: '线程数',
-              hint: 'CPU 推理线程数。建议设为手机核心数（4-8），过高反而变慢',
+              hint: 'CPU 推理线程数。建议设为手机核心数（4-8），过高反而变慢。设为0自动检测',
               value: settings.nThreads.toDouble(),
-              min: 1,
+              min: 0,
               max: 8,
-              divisions: 7,
+              divisions: 8,
               onChanged: (v) => settings.nThreads = v.round(),
             ),
 
             const SizedBox(height: 12),
-            _sectionHeader(context, '加速后端'),
-            _buildToggle(
-              context,
-              label: 'ARM Compute Library',
-              hint: '启用 ARM 官方 CPU 加速库（NEON 汇编优化）。部分手机可能不兼容，关闭则回退 XNNPACK',
-              value: settings.useACL,
-              onChanged: (v) => settings.useACL = v,
-            ),
+            _sectionHeader(context, '加速后端（改后需重新加载模型）'),
+            _buildProviderDropdown(context, settings),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDeviceInfo(BuildContext context, SettingsProvider settings) {
+    final info = settings.deviceInfo;
+    final recommended = info['recommended'] as String? ?? 'CPU_ACL';
+    final soc = info['soc_model'] as String? ?? '';
+    final mfr = info['soc_manufacturer'] as String? ?? '';
+    final cores = info['cores']?.toString() ?? '?';
+    final chipLabel = soc.isNotEmpty && soc != 'unknown'
+        ? '$soc ($mfr)'
+        : '${info['hardware'] ?? 'unknown'}';
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.memory, size: 20, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '已检测到芯片',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Colors.grey,
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  chipLabel,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  '$cores 核心 · 推荐 $recommended',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProviderDropdown(BuildContext context, SettingsProvider settings) {
+    final recommended = settings.deviceInfo['recommended'] as String? ?? 'CPU_ACL';
+    const items = [
+      ('auto', '自动（推荐）'),
+      ('nnapi', 'NNAPI（NPU/DSP 加速，速度最快）'),
+      ('cpu_acl', 'ACL + XNNPACK（CPU 稳定方案）'),
+      ('cpu_only', '纯 CPU / XNNPACK（最大兼容性）'),
+    ];
+
+    final labels = {
+      'auto': '自动选择最优后端（NNAPI > ACL > CPU）。\n当前推荐: $recommended',
+      'nnapi': '强制走 Android NNAPI，可能调用 NPU/DSP/GPU。\n速度最快，但部分模型可能不兼容。需要 Android 8.1+',
+      'cpu_acl': 'ARM Compute Library (NEON 汇编) + XNNPACK。\n稳定可靠，大多数手机的最佳选择',
+      'cpu_only': '纯 XNNPACK CPU 推理。\n部分手机 ACL 有兼容 bug 时的备用方案',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (value, label) in items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: RadioListTile<String>(
+              title: Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+              subtitle: Text(
+                labels[value] ?? '',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey,
+                  fontSize: 11,
+                ),
+              ),
+              value: value,
+              groupValue: settings.providerMode,
+              onChanged: (v) {
+                if (v != null) settings.providerMode = v;
+              },
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        // 当前实际使用的后端
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, size: 14, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                '当前后端: ${settings.providerMode.toUpperCase()}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -152,42 +270,6 @@ class ParameterPanel extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.w600,
         ),
-      ),
-    );
-  }
-
-  Widget _buildToggle(
-    BuildContext context, {
-    required String label,
-    required String hint,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-              ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-              ),
-            ],
-          ),
-          Text(
-            hint,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.grey,
-              fontSize: 11,
-            ),
-          ),
-        ],
       ),
     );
   }

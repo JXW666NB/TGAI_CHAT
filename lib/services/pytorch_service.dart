@@ -8,31 +8,42 @@ class PytorchService {
   bool get isLoaded => _isLoaded;
 
   int nCtx = 0;
+  String _activeProvider = 'unknown';
+  String get activeProvider => _activeProvider;
 
   Future<void> loadModel({
     required String modelPath,
     required String tokenizerPath,
     required int nCtx,
-    required bool useACL,
+    required String providerMode,
+    int nThreads = 0,
   }) async {
     await unloadModel();
     final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('loadModel', {
       'modelPath': modelPath,
       'tokenizerPath': tokenizerPath,
       'nCtx': nCtx,
-      'useACL': useACL,
+      'providerMode': providerMode,
+      'nThreads': nThreads,
     });
     if (result == null || result['success'] != true) {
       throw Exception(result?['error'] ?? '加载模型失败');
     }
     _isLoaded = true;
     this.nCtx = result['nCtx'] as int? ?? nCtx;
+    _activeProvider = result['provider'] as String? ?? 'unknown';
+  }
+
+  Future<Map<String, dynamic>?> getDeviceInfo() async {
+    final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getDeviceInfo');
+    return result?.map((k, v) => MapEntry(k.toString(), v));
   }
 
   Future<void> unloadModel() async {
     if (!_isLoaded) return;
     await _channel.invokeMethod('unloadModel');
     _isLoaded = false;
+    _activeProvider = 'unknown';
   }
 
   Future<int> countTokens(String text) async {

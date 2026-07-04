@@ -1,6 +1,7 @@
 package com.example.tg_chat
 
 import android.content.Context
+import android.os.Build
 import ai.onnxruntime.*
 import kotlin.math.exp
 import kotlin.math.max
@@ -8,6 +9,26 @@ import kotlin.math.min
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.*
+
+/**
+ * 执行提供器模式
+ * - AUTO:     自动选择最优（NNAPI > ACL > CPU）
+ * - NNAPI:    Android NNAPI（可能走 NPU/DSP/GPU，速度最快但兼容性差）
+ * - CPU_ACL:  ARM Compute Library + XNNPACK（稳定，当前默认）
+ * - CPU_ONLY: 纯 XNNPACK（最大兼容性，部分手机 ACL 有 bug 时的底牌）
+ */
+enum class ExecutionProvider {
+    AUTO, NNAPI, CPU_ACL, CPU_ONLY;
+
+    companion object {
+        fun fromString(s: String?): ExecutionProvider = when (s?.lowercase()) {
+            "nnapi" -> NNAPI
+            "cpu_acl" -> CPU_ACL
+            "cpu_only" -> CPU_ONLY
+            else -> AUTO
+        }
+    }
+}
 
 class TgaiOnnxInference {
 
@@ -17,31 +38,163 @@ class TgaiOnnxInference {
 
     private var nCtx: Int = 512
     private var vocabSize: Int = 0
+    private var activeProvider: String = "unknown"
 
     @Volatile
     private var stopRequested: Boolean = false
 
-    fun loadModel(context: Context, modelPath: String, tokenizerPath: String, nCtx: Int, useACL: Boolean = true) {
+    /**
+     * 获取设备信息（芯片型号、核心数、架构等）
+     * 供 Flutter 端展示
+     */
+    fun getDeviceInfo(): Map<String, Any> {
+        val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (Build.SOC_MODEL ?: "unknown")
+        } else "unknown"
+        val socMfr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (Build.SOC_MANUFACTURER ?: "unknown")
+        } else "unknown"
+        val cores = Runtime.getRuntime().availableProcessors()
+        val abis = Build.SUPPORTED_ABIS?.joinToString(", ") ?: "unknown"
+
+        // 判断芯片厂商，给出推荐
+        val recommended: String = when {
+            socMfr.lowercase().contains("qualcomm") || socModel.lowercase().contains("snapdragon") -> "NNAPI"
+            socMfr.lowercase().contains("mediatek") || socModel.lowercase().contains("dimensity") -> "NNAPI"
+            socMfr.lowercase().contains("samsung") || socModel.lowercase().contains("exynos") -> "NNAPI"
+            socMfr.lowercase().contains("hisilicon") || socModel.lowercase().contains("kirin") -> "NNAPI"
+            else -> "CPU_ACL"
+        }
+
+        return mapOf(
+            "manufacturer" to (Build.MANUFACTURER ?: "unknown"),
+            "model" to (Build.MODEL ?: "unknown"),
+            "hardware" to (Build.HARDWARE ?: "unknown"),
+            "soc_manufacturer" to socMfr,
+            "soc_model" to socModel,
+            "cores" to cores,
+            "arch" to abis,
+            "recommended" to recommended,
+            "sdk" to Build.VERSION.SDK_INT,
+        )
+    }
+
+    /**
+     * 加载模型，支持多种执行提供器
+     *
+     * @param providerMode 执行提供器模式（auto/nnapi/cpu_acl/cpu_only）
+     * @param nThreads 线程数，0=自动
+     */
+    fun loadModel(
+        context: Context,
+        modelPath: String,
+        tokenizerPath: String,
+        nCtx: Int,
+        providerMode: String = "auto",
+        nThreads: Int = 0,
+    ) {
         this.nCtx = nCtx
         tokenizer = TgaiTokenizer(context, tokenizerPath)
         vocabSize = tokenizer!!.vocabSize
 
         env = OrtEnvironment.getEnvironment()
-        val opts = OrtSession.SessionOptions().apply {
-            // ACL（ARM Compute Library）优先，回退 XNNPACK CPU
-            if (useACL) {
-                try { addACL(true) } catch (_: Exception) {}
-            }
-            try { addCPU(true) } catch (_: Exception) {}
-            val numCores = Runtime.getRuntime().availableProcessors()
-            try { setIntraOpNumThreads(numCores) } catch (_: Exception) {}
-            try { setInterOpNumThreads(1) } catch (_: Exception) {}
-            try { addConfigEntry("session.intra_op.allow_spinning", "0") } catch (_: Exception) {}
-            try { setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT) } catch (_: Exception) {}
-            try { setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL) } catch (_: Exception) {}
+        val opts = OrtSession.SessionOptions()
+
+        // 基础优化
+        try { opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT) } catch (_: Exception) {}
+        try { opts.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL) } catch (_: Exception) {}
+        try { opts.addConfigEntry("session.intra_op.allow_spinning", "0") } catch (_: Exception) {}
+
+        // 线程数
+        val cores = if (nThreads > 0) nThreads else Runtime.getRuntime().availableProcessors()
+        try { opts.setIntraOpNumThreads(cores) } catch (_: Exception) {}
+        try { opts.setInterOpNumThreads(1) } catch (_: Exception) {}
+
+        val mode = ExecutionProvider.fromString(providerMode)
+
+        when (mode) {
+            ExecutionProvider.AUTO -> configureAuto(opts)
+            ExecutionProvider.NNAPI -> configureNnapi(opts)
+            ExecutionProvider.CPU_ACL -> configureCpuAcl(opts)
+            ExecutionProvider.CPU_ONLY -> configureCpuOnly(opts)
         }
 
         session = env!!.createSession(modelPath, opts)
+    }
+
+    /**
+     * AUTO: NNAPI → ACL → CPU_ONLY 逐级回退
+     */
+    private fun configureAuto(opts: OrtSession.SessionOptions) {
+        // 先试 NNAPI（多数新手机支持）
+        var nnapiOK = tryAddNnapi(opts)
+        if (nnapiOK) {
+            activeProvider = "NNAPI"
+            // NNAPI 成功后加 ACL 作为 CPU 回退
+            try { opts.addACL(true) } catch (_: Exception) {}
+            try { opts.addCPU(true) } catch (_: Exception) {}
+            return
+        }
+
+        // NNAPI 不可用，试 ACL
+        try { opts.addACL(true) } catch (_: Exception) {}
+        try { opts.addCPU(true) } catch (_: Exception) {}
+        activeProvider = "CPU_ACL"
+    }
+
+    /**
+     * NNAPI 模式：优先 NNAPI，回退 CPU
+     */
+    private fun configureNnapi(opts: OrtSession.SessionOptions) {
+        val ok = tryAddNnapi(opts)
+        if (ok) {
+            activeProvider = "NNAPI"
+        } else {
+            // NNAPI 不可用就降级到 CPU
+            try { opts.addACL(true) } catch (_: Exception) {}
+            try { opts.addCPU(true) } catch (_: Exception) {}
+            activeProvider = "CPU_ACL (fallback: NNAPI unavailable)"
+        }
+    }
+
+    /**
+     * CPU_ACL 模式：ACL + XNNPACK（最稳定）
+     */
+    private fun configureCpuAcl(opts: OrtSession.SessionOptions) {
+        try { opts.addACL(true) } catch (_: Exception) {}
+        try { opts.addCPU(true) } catch (_: Exception) {}
+        activeProvider = "CPU_ACL"
+    }
+
+    /**
+     * CPU_ONLY 模式：纯 XNNPACK（最大兼容性）
+     */
+    private fun configureCpuOnly(opts: OrtSession.SessionOptions) {
+        try { opts.addCPU(true) } catch (_: Exception) {}
+        activeProvider = "CPU_ONLY"
+    }
+
+    /**
+     * 尝试添加 NNAPI 执行提供器
+     * @return true 如果添加成功
+     */
+    private fun tryAddNnapi(opts: OrtSession.SessionOptions): Boolean {
+        return try {
+            // ONNX Runtime 1.18+ 的 NNAPI API
+            opts.addNnapi(mapOf(
+                "nnapi.use_fp16" to "1",
+                "nnapi.use_nchw" to "0",
+            ))
+            true
+        } catch (e: Exception) {
+            try {
+                // 旧版 API（无参数）
+                opts.addNnapi()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 
     fun unloadModel() {
@@ -51,6 +204,7 @@ class TgaiOnnxInference {
         session = null
         env = null
         tokenizer = null
+        activeProvider = "unknown"
     }
 
     fun countTokens(text: String): Int {
@@ -146,6 +300,9 @@ class TgaiOnnxInference {
     fun stop() {
         stopRequested = true
     }
+
+    /** 返回当前实际使用的执行提供器（用于调试/展示） */
+    fun getActiveProvider(): String = activeProvider
 
     private fun sample(
         logits: FloatArray,

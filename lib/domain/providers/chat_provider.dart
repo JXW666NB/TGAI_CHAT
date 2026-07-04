@@ -24,6 +24,7 @@ class ChatProvider extends ChangeNotifier {
   // 跟踪上次加载时的设置，变化时自动重载
   int? _lastContextLength;
   bool? _lastUseACL;
+  String? _lastProviderMode;
   StreamSubscription<String>? _genSub;
 
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
@@ -93,7 +94,8 @@ class ChatProvider extends ChangeNotifier {
     // 如果加载时设置变化了，自动卸载重载
     if (_pytorch.isLoaded) {
       if (_lastContextLength != settings.contextLength ||
-          _lastUseACL != settings.useACL) {
+          _lastUseACL != settings.useACL ||
+          _lastProviderMode != settings.providerMode) {
         await _pytorch.unloadModel();
       } else {
         return;
@@ -108,11 +110,13 @@ class ChatProvider extends ChangeNotifier {
         modelPath: model.path,
         tokenizerPath: model.tokenizerPath,
         nCtx: settings.contextLength,
-        useACL: settings.useACL,
+        providerMode: settings.providerMode,
+        nThreads: settings.nThreads,
       );
       _error = null;
       _lastContextLength = settings.contextLength;
       _lastUseACL = settings.useACL;
+      _lastProviderMode = settings.providerMode;
     } catch (e) {
       _error = e.toString();
       rethrow;

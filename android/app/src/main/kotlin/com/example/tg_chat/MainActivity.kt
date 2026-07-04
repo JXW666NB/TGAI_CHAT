@@ -35,14 +35,16 @@ class MainActivity : FlutterActivity() {
                         val modelPath = call.argument<String>("modelPath") ?: ""
                         val tokenizerPath = call.argument<String>("tokenizerPath") ?: ""
                         val nCtx = call.argument<Int>("nCtx") ?: 512
-                        val useACL = call.argument<Boolean>("useACL") ?: true
+                        val providerMode = call.argument<String>("providerMode") ?: "auto"
+                        val nThreads = call.argument<Int>("nThreads") ?: 0
 
                         // 后台线程加载模型，避免主线程阻塞导致 ANR（国产ROM容忍度低）
                         Thread {
                             try {
-                                inference.loadModel(context, modelPath, tokenizerPath, nCtx, useACL)
+                                inference.loadModel(context, modelPath, tokenizerPath, nCtx, providerMode, nThreads)
+                                val activeEp = inference.getActiveProvider()
                                 runOnUiThread {
-                                    result.success(mapOf("success" to true, "nCtx" to nCtx))
+                                    result.success(mapOf("success" to true, "nCtx" to nCtx, "provider" to activeEp))
                                 }
                             } catch (e: Exception) {
                                 runOnUiThread {
@@ -50,6 +52,12 @@ class MainActivity : FlutterActivity() {
                                 }
                             }
                         }.start()
+                    }
+                    "getDeviceInfo" -> {
+                        result.success(inference.getDeviceInfo())
+                    }
+                    "getActiveProvider" -> {
+                        result.success(inference.getActiveProvider())
                     }
                     "unloadModel" -> {
                         inference.unloadModel()
