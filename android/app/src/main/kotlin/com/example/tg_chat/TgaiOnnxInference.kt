@@ -180,17 +180,10 @@ class TgaiOnnxInference {
      */
     private fun tryAddNnapi(opts: OrtSession.SessionOptions): Boolean {
         return try {
-            // ONNX Runtime NNAPI（useArena=true 可减少内存分配）
-            opts.addNnapi(true)
+            opts.addNnapi()
             true
-        } catch (e: Exception) {
-            try {
-                // 无参回退
-                opts.addNnapi()
-                true
-            } catch (_: Exception) {
-                false
-            }
+        } catch (_: Exception) {
+            false
         }
     }
 
